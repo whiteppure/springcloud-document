@@ -3178,6 +3178,542 @@ Spring Boot包括对以下嵌入式反应式Web服务器的支持。Reactor Nett
 
 ## 8. 优雅关机
 
+所有四个嵌入式Web服务器（Jetty、Reactor Netty、Tomcat和Undertow）以及基于响应式和Servlet的Web应用程序都支持优雅关闭。它作为关闭应用程序上下文的一部分发生，并在停止`SmartLifecycle` bean的最早阶段执行。这种停止处理使用一个超时，提供一个宽限期，在此期间，现有的请求将被允许完成，但不允许有新的请求。不允许新请求的确切方式取决于正在使用的网络服务器。Jetty、Reactor Netty和Tomcat将在网络层停止接受请求。Undertow将接受请求，但立即响应服务不可用（503）的回应。
+
+> 使用Tomcat的优雅关机需要Tomcat 9.0.33或更高版本。
+
+要启用优雅关机，请配置`server.shutdown`属性，如下例所示。
+
+```yaml
+server:
+  shutdown: "graceful"
+```
+
+要配置超时时间，请配置`spring.lifecycle.timeout-per-shutdown-phase`属性，如下例所示。
+
+```yaml
+spring:
+  lifecycle:
+    timeout-per-shutdown-phase: "20s"
+```
+
+**如果你的IDE没有发送适当的 `SIGTERM` 信号，使用优雅关机可能无法正常工作。更多细节请参考你的IDE的文档。**
+
+## 9. RSocket
+
+[RSocket](https://rsocket.io/)是一个用于字节流传输的二进制协议。它通过单个连接的异步消息传递实现对称的交互模型。
+
+Spring框架的`spring-messaging`模块为RSocket请求和响应提供了支持，包括在客户端和服务器端。参见Spring框架参考资料中的[RSocket部分](https://docs.spring.io/spring-framework/docs/5.3.9/reference/html/web-reactive.html#rsocket-spring)以了解更多细节，包括RSocket协议的概述。
+
+### 9.1. RSocket Strategies Auto-configuration
+
+Spring Boot自动配置了一个`RSocketStrategies` bean，它提供了编码和解码RSocket payloads所需的所有基础设施。默认情况下，自动配置将尝试配置以下内容（按顺序）。
+
+1. 使用Jackson的[CBOR](https://cbor.io/)编解码器
+2. 使用Jackson的JSON编解码器
+
+`spring-boot-starter-rsocket`启动器提供了这两个依赖项。查看[Jackson支持部分](https://docs.spring.io/spring-boot/docs/current/reference/html/features.html#features.json.jackson)以了解更多关于定制的可能性。
+
+开发者可以通过创建实现 `RSocketStrategiesCustomizer` 接口的bean来定制`RSocketStrategies`组件。请注意，它们的`@Order`很重要，因为它决定了编解码器的顺序。
+
+### 9.2. RSocket server Auto-configuration
+
+Spring Boot提供了RSocket服务器自动配置功能。所需的依赖性由`spring-boot-starter-rsocket`提供。
+
+Spring Boot允许从WebFlux服务器通过WebSocket暴露RSocket，或建立一个独立的RSocket服务器。这取决于应用程序的类型及其配置。
+
+对于WebFlux应用程序（即 `WebApplicationType.REACTIVE` 类型），只有在以下属性相符时，RSocket服务器才会被插入Web服务器。
+
+```yaml
+spring:
+  rsocket:
+    server:
+      mapping-path: "/rsocket"
+      transport: "websocket"
+```
+
+> 将RSocket插入Web服务器只支持Reactor Netty，因为RSocket本身就是用该库构建的。
+
+另外，RSocket TCP或websocket服务器作为一个独立的嵌入式服务器被启动。除了依赖性要求，唯一需要的配置是为该服务器定义一个端口。
+
+```yaml
+spring:
+  rsocket:
+    server:
+      port: 9898
+```
+
+### 9.3. Spring Messaging RSocket支持
+
+Spring Boot将为RSocket自动配置Spring Messaging基础设施。
+
+这意味着Spring Boot将创建一个`RSocketMessageHandler` bean，以处理对你的应用程序的RSocket请求。
+
+#### 9.4. 用RSocketRequester调用RSocket服务
+
+一旦服务器和客户端之间建立了`RSocket`通道，任何一方都可以向对方发送或接收请求。
+
+作为服务器，你可以在RSocket `@Controller`的任何处理方法上被注入一个`RSocketRequester`实例。作为客户端，你需要首先配置并建立一个RSocket连接。Spring Boot为这种情况自动配置了一个`RSocketRequester.Builder`，并配备了预期的编解码器。
+
+`RSocketRequester.Builder`实例是一个Prototype Bean，意味着每个注入点都会为你提供一个新的实例。这样做是有目的的，因为这个构建器是有状态的，你不应该用同一个实例创建具有不同设置的请求者。
+
+下面的代码显示了一个典型的例子。
+
+```java
+import reactor.core.publisher.Mono;
+
+import org.springframework.messaging.rsocket.RSocketRequester;
+import org.springframework.stereotype.Service;
+
+@Service
+public class MyService {
+
+    private final RSocketRequester rsocketRequester;
+
+    public MyService(RSocketRequester.Builder rsocketRequesterBuilder) {
+        this.rsocketRequester = rsocketRequesterBuilder.tcp("example.org", 9898);
+    }
+
+    public Mono<User> someRSocketCall(String name) {
+        return this.rsocketRequester.route("user").data(name).retrieveMono(User.class);
+    }
+
+}
+```
+
+## 10. Security
+
+如果[Spring Security](https://spring.io/projects/spring-security)在classpath上，那么Web应用程序默认是安全的。Spring Boot依靠Spring Security的内容协商策略来决定是使用`httpBasic`还是`formLogin`。要为Web应用添加方法级安全，你也可以添加`@EnableGlobalMethodSecurity`，并加上你想要的设置。其他信息可以在[Spring Security Reference Guide](https://docs.spring.io/spring-security/site/docs/5.5.1/reference/html5/#jc-method)中找到。
+
+默认的`UserDetailsService`有一个用户。用户名是`user`，密码是随机的，当应用程序启动时，密码会被打印在INFO级别，如以下例子所示。
+
+```text
+Using generated security password: 78fa095d-3f4c-48b1-ad50-e24c31d5cf35
+```
+
+> 如果你微调你的日志配置，确保`org.springframework.boot.autoconfigure.security`类别被设置为记录`INFO`级的消息。否则，默认密码不会被打印出来。
+
+你可以通过提供`spring.security.user.name`和`spring.security.user.password`来改变用户名和密码。
+
+你在Web应用程序中默认得到的基本功能是。
+
+* 一个`UserDetailsService`（如果是WebFlux应用程序，则为`ReactiveUserDetailsService`）bean，具有内存存储和一个具有生成密码的单一用户（关于用户的属性，见[`SecurityProperties.User`](https://docs.spring.io/spring-boot/docs/2.5.3/api/org/springframework/boot/autoconfigure/security/SecurityProperties.User.html)）。
+* 整个应用程序（包括执行器端点，如果执行器在classpath上）基于表单的登录或HTTP Basic安全（取决于请求中的`Accept`头）。
+* 一个`DefaultAuthenticationEventPublisher`用于发布认证事件。
+
+你可以通过添加一个bean来提供一个不同的`AuthenticationEventPublisher`。
+
+### 10.1. MVC Security
+
+默认的安全配置在`SecurityAutoConfiguration`和`UserDetailsServiceAutoConfiguration`中实现。`SecurityAutoConfiguration`导入`SpringBootWebSecurityConfiguration`用于Web安全，`UserDetailsServiceAutoConfiguration`配置认证，这也与非Web应用有关。要完全关闭默认的Web应用安全配置，或结合多个Spring安全组件，如OAuth2客户端和资源服务器，请添加一个`SecurityFilterChain`类型的bean（这样做不会禁用`UserDetailsService`配置或Actuator的安全性）。
+
+为了关闭 `UserDetailsService` 的配置，你可以添加一个`UserDetailsService`、`AuthenticationProvider`或`AuthenticationManager`类型的bean。
+
+访问规则可以通过添加一个自定义的`SecurityFilterChain`或`WebSecurityConfigurerAdapter`bean来重写。Spring Boot提供了方便的方法，可以用来覆盖执行器端点和静态资源的访问规则。`EndpointRequest`可用于创建一个基于`management.endpoints.web.base-path`属性的`RequestMatcher`。`PathRequest`可以用来为常用位置的资源创建`RequestMatcher`。
+
+### 10.2. WebFlux Security
+
+与Spring MVC应用程序类似，你可以通过添加`spring-boot-starter-security`依赖关系来保护你的WebFlux应用程序。默认的安全配置是在`ReactiveSecurityAutoConfiguration`和`UserDetailsServiceAutoConfiguration`中实现。`ReactiveSecurityAutoConfiguration` 导入 `WebFluxSecurityConfiguration` 用于Web安全，`UserDetailsServiceAutoConfiguration` 用于配置认证，这在非Web应用中也很重要。要完全关闭默认的Web应用安全配置，你可以添加一个`WebFilterChainProxy`类型的bean（这样做不会禁用`UserDetailsService`配置或Actuator的安全）。
+
+要关闭 `UserDetailsService` 配置，你可以添加一个 `ReactiveUserDetailsService` 或 `ReactiveAuthenticationManager` 类型的bean。
+
+访问规则和多个Spring安全组件的使用，如OAuth 2客户端和资源服务器，可以通过添加一个自定义的`SecurityWebFilterChain`bean来配置。Spring Boot提供了方便的方法，可用于覆盖执行器端点和静态资源的访问规则。`EndpointRequest`可用于创建基于`management.endpoints.web.base-path`属性的`ServerWebExchangeMatcher`。
+
+`PathRequest`可以用来为常用位置的资源创建一个`ServerWebExchangeMatcher`。
+
+例如，你可以通过添加以下内容来定制你的安全配置。
+
+```java
+import org.springframework.boot.autoconfigure.security.reactive.PathRequest;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.web.server.ServerHttpSecurity;
+import org.springframework.security.web.server.SecurityWebFilterChain;
+
+@Configuration(proxyBeanMethods = false)
+public class MyWebFluxSecurityConfiguration {
+
+    @Bean
+    public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
+        http.authorizeExchange((spec) -> {
+            spec.matchers(PathRequest.toStaticResources().atCommonLocations()).permitAll();
+            spec.pathMatchers("/foo", "/bar").authenticated();
+        });
+        http.formLogin();
+        return http.build();
+    }
+
+}
+```
+
+### 10.3. OAuth2
+
+[OAuth2](https://oauth.net/2/)是一个被广泛使用的授权框架，由Spring支持。
+
+#### 10.3.1. Client
+
+如果你的classpath上有`spring-security-oauth2-client`，你可以利用一些自动配置来设置一个OAuth2/Open ID Connect客户端。这个配置利用了`OAuth2ClientProperties`下的属性。同样的属性也适用于servlet和响应式应用程序。
+
+你可以在`spring.security.oauth2.client`前缀下注册多个OAuth2客户端和提供者，如以下例子所示。
+
+```yaml
+spring:
+  security:
+    oauth2:
+      client:
+        registration:
+          my-client-1:
+            client-id: "abcd"
+            client-secret: "password"
+            client-name: "Client for user scope"
+            provider: "my-oauth-provider"
+            scope: "user"
+            redirect-uri: "https://my-redirect-uri.com"
+            client-authentication-method: "basic"
+            authorization-grant-type: "authorization-code"
+
+          my-client-2:
+            client-id: "abcd"
+            client-secret: "password"
+            client-name: "Client for email scope"
+            provider: "my-oauth-provider"
+            scope: "email"
+            redirect-uri: "https://my-redirect-uri.com"
+            client-authentication-method: "basic"
+            authorization-grant-type: "authorization_code"
+
+        provider:
+          my-oauth-provider:
+            authorization-uri: "https://my-auth-server/oauth/authorize"
+            token-uri: "https://my-auth-server/oauth/token"
+            user-info-uri: "https://my-auth-server/userinfo"
+            user-info-authentication-method: "header"
+            jwk-set-uri: "https://my-auth-server/token_keys"
+            user-name-attribute: "name"
+```
+
+对于支持[OpenID Connect discovery](https://openid.net/specs/openid-connect-discovery-1_0.html)的OpenID Connect提供商，配置可以进一步简化。提供者需要配置一个`issuer-uri`，这是它作为其发行者标识符所主张的URI。例如，如果提供的`issuer-uri`是 `https://example.com`，那么将向 `https://example.com/.well-known/openid-configuration` 提出`OpenID Provider Configuration Request`。结果将是一个 `OpenID Provider Configuration Response`。下面的例子显示了如何用`issuer-uri`来配置OpenID连接提供商。
+
+```yaml
+spring:
+  security:
+    oauth2:
+      client:
+        provider:
+          oidc-provider:
+            issuer-uri: "https://dev-123456.oktapreview.com/oauth2/default/"
+```
+
+默认情况下，Spring Security的`OAuth2LoginAuthenticationFilter`只处理匹配`/login/oauth2/code/*`的URL。如果你想自定义`redirect-uri`以使用不同的模式，你需要提供配置来处理该自定义模式。例如，对于Servlet应用程序，你可以添加你自己的`SecurityFilterChain`，类似于以下内容。
+
+```java
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.web.SecurityFilterChain;
+
+@Configuration(proxyBeanMethods = false)
+public class MyOAuthClientConfiguration {
+
+    @Bean
+    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+        http.authorizeRequests().anyRequest().authenticated();
+        http.oauth2Login().redirectionEndpoint().baseUri("custom-callback");
+        return http.build();
+    }
+
+}
+```
+
+> Spring Boot自动配置了一个`InMemoryOAuth2AuthorizedClientService`，它被Spring Security用来管理客户端注册。`InMemoryOAuth2AuthorizedClientService`的功能有限，我们建议只在开发环境中使用它。对于生产环境，请考虑使用`JdbcOAuth2AuthorizedClientService`或创建你自己的`OAuth2AuthorizedClientService`实现。
+
+##### OAuth2 client registration for common providers
+
+对于常见的OAuth2和OpenID提供者，包括Google、Github、Facebook和Okta，我们提供了一组提供者的默认值（分别为`google`、`github`、`facebook`和`okta`）。
+
+如果你不需要定制这些提供者，你可以将`provider`属性设置为你需要推断默认值的那个。另外，如果客户端注册的密钥与默认支持的提供者相匹配，Spring Boot也会推断出这一点。
+
+换句话说，下面例子中的两个配置使用的是Google提供者。
+
+```yaml
+spring:
+  security:
+    oauth2:
+      client:
+        registration:
+          my-client:
+            client-id: "abcd"
+            client-secret: "password"
+            provider: "google"
+          google:
+            client-id: "abcd"
+            client-secret: "password"
+
+```
+
+#### 10.3.2. 资源服务器
+
+如果你的classpath上有`spring-security-oauth2-resource-server`，Spring Boot可以设置一个OAuth2资源服务器。对于JWT配置，需要指定JWK Set URI或OIDC Issuer URI，如以下例子所示。
+
+```yaml
+spring:
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: "https://example.com/oauth2/default/v1/keys"
+```
+
+```yaml
+spring:
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: "https://dev-123456.oktapreview.com/oauth2/default/"
+
+```
+
+> 如果授权服务器不支持JWK Set URI，你可以在资源服务器上配置用于验证JWT签名的公钥。这可以通过`spring.security.oauth2.resourceserver.jwt.public-key-location`属性来完成，其中的值需要指向一个包含PEM编码的x509格式的公钥的文件。
+
+同样的属性适用于Servlet和反应式应用程序。
+
+另外，你可以为Servlet应用程序定义你自己的`JwtDecoder`bean，或者为反应式应用程序定义`ReactiveJwtDecoder`。
+
+在使用不透明令牌而不是JWT的情况下，你可以配置以下属性，通过自省来验证令牌。
+
+```yaml
+spring:
+  security:
+    oauth2:
+      resourceserver:
+        opaquetoken:
+          introspection-uri: "https://example.com/check-token"
+          client-id: "my-client-id"
+          client-secret: "my-client-secret"
+
+```
+
+同样，同样的属性也适用于servlet和reactive应用程序。
+
+另外，你可以为Servlet应用程序定义你自己的`OpaqueTokenIntrospector` bean，或者为反应式应用程序定义`ReactiveOpaqueTokenIntrospector`。
+
+#### 10.3.3. 授权服务器
+
+目前，Spring Security并不提供对实现OAuth 2.0授权服务器的支持。然而，这个功能可以从[Spring Security OAuth](https://spring.io/projects/spring-security-oauth)项目中获得，该项目最终将被Spring Security完全取代。在此之前，你可以使用`spring-security-oauth2-autoconfigure`模块来轻松设置一个OAuth 2.0授权服务器，具体说明请参见其[document](https://docs.spring.io/spring-security-oauth2-boot/)。
+
+### 10.4. SAML 2.0
+
+#### 10.4.1. Relying Party
+
+如果你的classpath上有`spring-security-saml2-service-provider`，你可以利用一些自动配置来设置一个SAML 2.0的信赖方。这个配置利用了`Saml2RelyingPartyProperties`下的属性。
+
+依赖方注册代表了身份提供商（IDP）和服务提供商（SP）之间的配对配置。你可以在`spring.security.saml2.relyingparty`前缀下注册多个依赖方，如以下例子所示。
+
+```yaml
+spring:
+  security:
+    saml2:
+      relyingparty:
+        registration:
+          my-relying-party1:
+            signing:
+              credentials:
+              - private-key-location: "path-to-private-key"
+                certificate-location: "path-to-certificate"
+            decryption:
+              credentials:
+              - private-key-location: "path-to-private-key"
+                certificate-location: "path-to-certificate"
+            identityprovider:
+              verification:
+                credentials:
+                - certificate-location: "path-to-verification-cert"
+              entity-id: "remote-idp-entity-id1"
+              sso-url: "https://remoteidp1.sso.url"
+
+          my-relying-party2:
+            signing:
+              credentials:
+              - private-key-location: "path-to-private-key"
+                certificate-location: "path-to-certificate"
+            decryption:
+              credentials:
+              - private-key-location: "path-to-private-key"
+                certificate-location: "path-to-certificate"
+            identityprovider:
+              verification:
+                credentials:
+                - certificate-location: "path-to-other-verification-cert"
+              entity-id: "remote-idp-entity-id2"
+              sso-url: "https://remoteidp2.sso.url"
+```
+
+### 10.5. Actuator Security
+
+为了安全起见，所有除`/health`以外的执行器都被默认禁用。`management.endpoints.web.exposure.include`属性可以用来启用执行器。
+
+如果Spring Security在classpath上，并且没有其他`WebSecurityConfigurerAdapter`或`SecurityFilterChain` bean存在，所有`/health`以外的执行器都由Spring Boot自动配置保护。如果你定义了一个自定义的`WebSecurityConfigurerAdapter`或`SecurityFilterChain`bean，Spring Boot的自动配置就会退出，你将完全控制执行器的访问规则。
+
+> 在设置 `management.endpoints.web.exposure.include` 之前，确保暴露的执行器不包含敏感信息，并且/或者通过将其置于防火墙或Spring Security之类的东西来确保安全。
+
+#### 10.5.1. 跨站请求伪造保护
+
+由于Spring Boot依赖于Spring Security的默认值，CSRF保护默认是打开的。这意味着在使用默认安全配置时，需要`POST`关闭和记录器端点）、`PUT`或`DELETE`的执行器端点会出现403禁止的错误。
+
+> 我们建议只有在你创建的服务被非浏览器客户端使用时才完全禁用CSRF保护。
+
+关于CSRF保护的其他信息可以在[Spring Security Reference Guide](https://docs.spring.io/spring-security/site/docs/5.5.1/reference/html5/#csrf)中找到。
+
+## 11. 使用SQL数据库
+
+[Spring Framework](https://spring.io/projects/spring-framework)提供了对SQL数据库工作的广泛支持，从使用`JdbcTemplate`的直接JDBC访问到完整的 "object relational mapping" 技术，如Hibernate。[Spring Data](https://spring.io/projects/spring-data)提供了额外的功能：直接从接口创建`Repository`实现，并使用惯例从你的方法名称中生成查询。
+
+### 11.1. 配置一个数据源
+
+Java的`javax.sql.DataSource`接口提供了一个处理数据库连接的标准方法。传统上，`DataSource` 使用一个 `URL` 和一些凭证来建立一个数据库连接。
+
+> 更多高级的例子请参见["How-to"部分](https://docs.spring.io/spring-boot/docs/current/reference/html/howto.html#howto.data-access.configure-custom-datasource)，通常是对数据源的配置进行完全控制。
+
+#### 11.1.1. 嵌入式数据库支持
+
+通过使用内存中的嵌入式数据库来开发应用程序通常是很方便的。很明显，内存数据库不提供持久性存储。你需要在你的应用程序开始时填充你的数据库，并准备在你的应用程序结束时丢弃数据。
+
+> "How-to" 包括一个[关于如何初始化数据库的部分](https://docs.spring.io/spring-boot/docs/current/reference/html/howto.html#howto.data-initialization)。
+
+Spring Boot可以自动配置嵌入式[H2](https://www.h2database.com/)、[HSQL](http://hsqldb.org/)和[Derby](https://db.apache.org/derby/) 数据库。你不需要提供任何连接URL。你只需要包括一个你想使用的嵌入式数据库的构建依赖。如果在classpath上有多个嵌入式数据库，设置`spring.datasource.embedded-database-connection`配置属性来控制使用哪一个。将该属性设置为 `none`，可以禁止对嵌入式数据库进行自动配置。
+
+> 如果你在测试中使用这个功能，你可能会注意到，无论你使用多少个application context，整个测试套件都在重复使用同一个数据库。如果你想确保每个上下文都有一个单独的嵌入式数据库，你应该把`spring.datasource.generate-unique-name`设置为`true`。
+
+例如，典型的POM依赖关系如下。
+
+```xml
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-data-jpa</artifactId>
+</dependency>
+<dependency>
+    <groupId>org.hsqldb</groupId>
+    <artifactId>hsqldb</artifactId>
+    <scope>runtime</scope>
+</dependency>
+```
+
+你需要依赖`spring-jdbc`来自动配置一个嵌入式数据库。在这个例子中，它是通过 `spring-boot-starter-data-jpa` 传递依赖到系统的。
+
+如果出于某种原因，你确实为一个嵌入式数据库配置了连接URL，请注意确保数据库的自动关机功能被禁用。如果你使用H2，你应该使用`DB_CLOSE_ON_EXIT=FALSE`来做到这一点。如果你使用HSQLDB，你应该确保不使用`shutdown=true`。禁用数据库的自动关闭让Spring Boot控制数据库的关闭时间，从而确保一旦不再需要对数据库的访问，就会发生关闭。
+
+#### 11.1.2. 与生产数据库的连接
+
+生产数据库连接也可以通过使用池化数据源来自动配置。
+
+#### 11.1.3. 数据源配置
+
+数据源配置由`spring.datasource.*`中的外部配置属性控制。例如，你可以在`application.properties`中声明以下部分。
+
+```yaml
+spring:
+  datasource:
+    url: "jdbc:mysql://localhost/test"
+    username: "dbuser"
+    password: "dbpass"
+
+```
+
+你至少应该通过设置`spring.datasource.url`属性指定URL。否则，Spring Boot会尝试自动配置一个嵌入式数据库。
+
+Spring Boot可以从URL中推断出大多数数据库的JDBC驱动类。如果你需要指定一个特定的类，你可以使用`spring.datasource.driver-class-name`属性。
+
+为了创建一个池化的`DataSource`，我们需要能够验证一个有效的`Driver`类是可用的，所以我们在做任何事情之前都要检查。换句话说，如果你设置了`spring.datasource.driver-class-name=com.mysql.jdbc.Driver`，那么这个类必须是可加载的。
+
+更多支持的选项请参见[`DataSourceProperties`](https://github.com/spring-projects/spring-boot/tree/v2.5.3/spring-boot-project/spring-boot-autoconfigure/src/main/java/org/springframework/boot/autoconfigure/jdbc/DataSourceProperties.java)。这些是标准的选项，无论[实际的实现](https://docs.spring.io/spring-boot/docs/current/reference/html/features.html#features.sql.datasource.connection-pool)如何，都能发挥作用。也可以通过使用各自的前缀（`spring.datasource.hikari.*` , `spring.datasource.tomcat.*` , `spring.datasource.dbcp2.*` , 和`spring.datasource.oracleucp.*`）来微调具体的实现设置。请参考你所使用的连接池实现的文档以了解更多细节。
+
+例如，如果你使用[Tomcat连接池](https://tomcat.apache.org/tomcat-9.0-doc/jdbc-pool.html#Common_Attributes)，你可以定制许多额外的设置，如以下例子所示。
+
+```yaml
+spring:
+  datasource:
+    tomcat:
+      max-wait: 10000
+      max-active: 50
+      test-on-borrow: true
+
+```
+
+这将设置池子在没有连接可用时等待10000ms后抛出一个异常，限制最大连接数为50，并在从池子中借用连接前验证连接。
+
+#### 11.1.4. 支持的连接池
+
+Spring Boot使用以下算法来选择特定的实现。
+
+1. 我们更喜欢[HikariCP](https://github.com/brettwooldridge/HikariCP)，因为其性能和并发性。如果HikariCP可用，我们总是选择它。
+2. 2.否则，如果Tomcat池的`DataSource'可用，我们就使用它。
+3. 否则，如果[Commons DBCP2](https://commons.apache.org/proper/commons-dbcp/)是可用的，我们就使用它。
+4. 如果HikariCP、Tomcat和DBCP2都不可用，并且Oracle UCP可用，我们就使用它。
+
+如果你使用`spring-boot-starter-jdbc`或`spring-boot-starter-data-jpa` "starters"，你会自动得到对`HikariCP`的依赖。
+
+你可以完全绕过这个算法，通过设置`spring.datasource.type`属性来指定要使用的连接池。如果你在Tomcat容器中运行你的应用程序，这一点尤其重要，因为`tomcat-jdbc`是默认提供的。
+
+额外的连接池总是可以手动配置的，使用`DataSourceBuilder`。如果你定义你自己的`DataSource`bean，就不会发生自动配置。`DataSourceBuilder`支持以下的连接池。
+
+* HikariCP
+* Tomcat pooling `Datasource`
+* Commons DBCP2
+* Oracle UCP & `OracleDataSource`
+* Spring Framework’s `SimpleDriverDataSource`
+* H2 `JdbcDataSource`
+* PostgreSQL `PGSimpleDataSource`
+
+#### 11.1.5. 连接到一个JNDI数据源
+
+如果你将Spring Boot应用程序部署到应用服务器上，你可能想通过使用应用服务器的内置功能来配置和管理你的数据源，并通过使用JNDI来访问它。
+
+`spring.datasource.jndi-name`属性可以作为`spring.datasource.url`、`spring.datasource.username`和`spring.datasource.password`属性的替代品，从特定的JNDI位置访问`DataSource`。例如，`application.properties`中的以下部分显示了如何访问JBoss AS定义的`DataSource`。
+
+```yaml
+spring:
+  datasource:
+    jndi-name: "java:jboss/datasources/customers"
+```
+
+### 11.2. 使用JdbcTemplate
+
+Spring的`JdbcTemplate`和`NamedParameterJdbcTemplate`类是自动配置的，你可以将它们直接`@Autowire`到你自己的Bean中，如下例所示。
+
+```java
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Component;
+
+@Component
+public class MyBean {
+
+    private final JdbcTemplate jdbcTemplate;
+
+    public MyBean(JdbcTemplate jdbcTemplate) {
+        this.jdbcTemplate = jdbcTemplate;
+    }
+
+    public void doSomething() {
+        this.jdbcTemplate ...
+    }
+
+}
+```
+
+你可以通过使用`spring.jdbc.template.*`属性来定制模板的一些属性，如以下例子所示。
+
+```yaml
+spring:
+  jdbc:
+    template:
+      max-rows: 500
+```
+
+`NamedParameterJdbcTemplate`在幕后重复使用同一个`JdbcTemplate`实例。如果定义了一个以上的 `JdbcTemplate`，并且不存在主要的候选者，`NamedParameterJdbcTemplate` 就不会被自动配置。
+
+### 11.3. JPA 和 Spring Data JPA
+
 TODO
 
 {{#include ../license.md}}

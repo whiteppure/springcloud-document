@@ -9,7 +9,16 @@
 
 [mdBook](https://rust-lang.github.io/mdBook/)
 
+## 版权声明
 
-### 说明
+版权文件([license.md](/src/license.md))在[src](/src)目录中。
 
-> 2021-07-30 记录
+每个文档都需要在底部声明版权，在文档底部通过 `{{#include [path]}}` 统一“incloud”。
+
+注意，注意，注意`path`是一个相对路径，可以参考下面的几个写法。
+
+```text
+{{#include license.md}}
+{{#include ../license.md}}
+{{#include ../../license.md}}
+```

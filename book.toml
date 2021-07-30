@@ -12,7 +12,7 @@ create-missing = true  # 如果文件不存在， 是否创建
 
 [output.html]
 # theme = "my-theme"
-# default-theme = "light"
+default-theme = "rust"
 # preferred-dark-theme = "navy"
 # curly-quotes = true           # 将直引号转换为卷引号，但出现在代码块和代码跨度中的引号除外。
 # mathjax-support = false       # 添加对MathJax 的支持。
