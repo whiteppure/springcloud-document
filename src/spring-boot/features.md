@@ -3178,6 +3178,281 @@ Spring Boot包括对以下嵌入式反应式Web服务器的支持。Reactor Nett
 
 ## 8. 优雅关机
 
+所有四个嵌入式Web服务器（Jetty、Reactor Netty、Tomcat和Undertow）以及基于响应式和Servlet的Web应用程序都支持优雅关闭。它作为关闭应用程序上下文的一部分发生，并在停止`SmartLifecycle` bean的最早阶段执行。这种停止处理使用一个超时，提供一个宽限期，在此期间，现有的请求将被允许完成，但不允许有新的请求。不允许新请求的确切方式取决于正在使用的网络服务器。Jetty、Reactor Netty和Tomcat将在网络层停止接受请求。Undertow将接受请求，但立即响应服务不可用（503）的回应。
+
+> 使用Tomcat的优雅关机需要Tomcat 9.0.33或更高版本。
+
+要启用优雅关机，请配置`server.shutdown`属性，如下例所示。
+
+```yaml
+server:
+  shutdown: "graceful"
+```
+
+要配置超时时间，请配置`spring.lifecycle.timeout-per-shutdown-phase`属性，如下例所示。
+
+```yaml
+spring:
+  lifecycle:
+    timeout-per-shutdown-phase: "20s"
+```
+
+**如果你的IDE没有发送适当的 `SIGTERM` 信号，使用优雅关机可能无法正常工作。更多细节请参考你的IDE的文档。**
+
+## 9. RSocket
+
+[RSocket](https://rsocket.io/)是一个用于字节流传输的二进制协议。它通过单个连接的异步消息传递实现对称的交互模型。
+
+Spring框架的`spring-messaging`模块为RSocket请求和响应提供了支持，包括在客户端和服务器端。参见Spring框架参考资料中的[RSocket部分](https://docs.spring.io/spring-framework/docs/5.3.9/reference/html/web-reactive.html#rsocket-spring)以了解更多细节，包括RSocket协议的概述。
+
+### 9.1. RSocket Strategies Auto-configuration
+
+Spring Boot自动配置了一个`RSocketStrategies` bean，它提供了编码和解码RSocket payloads所需的所有基础设施。默认情况下，自动配置将尝试配置以下内容（按顺序）。
+
+1. 使用Jackson的[CBOR](https://cbor.io/)编解码器
+2. 使用Jackson的JSON编解码器
+
+`spring-boot-starter-rsocket`启动器提供了这两个依赖项。查看[Jackson支持部分](https://docs.spring.io/spring-boot/docs/current/reference/html/features.html#features.json.jackson)以了解更多关于定制的可能性。
+
+开发者可以通过创建实现 `RSocketStrategiesCustomizer` 接口的bean来定制`RSocketStrategies`组件。请注意，它们的`@Order`很重要，因为它决定了编解码器的顺序。
+
+### 9.2. RSocket server Auto-configuration
+
+Spring Boot提供了RSocket服务器自动配置功能。所需的依赖性由`spring-boot-starter-rsocket`提供。
+
+Spring Boot允许从WebFlux服务器通过WebSocket暴露RSocket，或建立一个独立的RSocket服务器。这取决于应用程序的类型及其配置。
+
+对于WebFlux应用程序（即 `WebApplicationType.REACTIVE` 类型），只有在以下属性相符时，RSocket服务器才会被插入Web服务器。
+
+```yaml
+spring:
+  rsocket:
+    server:
+      mapping-path: "/rsocket"
+      transport: "websocket"
+```
+
+> 将RSocket插入Web服务器只支持Reactor Netty，因为RSocket本身就是用该库构建的。
+
+另外，RSocket TCP或websocket服务器作为一个独立的嵌入式服务器被启动。除了依赖性要求，唯一需要的配置是为该服务器定义一个端口。
+
+```yaml
+spring:
+  rsocket:
+    server:
+      port: 9898
+```
+
+### 9.3. Spring Messaging RSocket支持
+
+Spring Boot将为RSocket自动配置Spring Messaging基础设施。
+
+这意味着Spring Boot将创建一个`RSocketMessageHandler` bean，以处理对你的应用程序的RSocket请求。
+
+#### 9.4. 用RSocketRequester调用RSocket服务
+
+一旦服务器和客户端之间建立了`RSocket`通道，任何一方都可以向对方发送或接收请求。
+
+作为服务器，你可以在RSocket `@Controller`的任何处理方法上被注入一个`RSocketRequester`实例。作为客户端，你需要首先配置并建立一个RSocket连接。Spring Boot为这种情况自动配置了一个`RSocketRequester.Builder`，并配备了预期的编解码器。
+
+`RSocketRequester.Builder`实例是一个Prototype Bean，意味着每个注入点都会为你提供一个新的实例。这样做是有目的的，因为这个构建器是有状态的，你不应该用同一个实例创建具有不同设置的请求者。
+
+下面的代码显示了一个典型的例子。
+
+```java
+import reactor.core.publisher.Mono;
+
+import org.springframework.messaging.rsocket.RSocketRequester;
+import org.springframework.stereotype.Service;
+
+@Service
+public class MyService {
+
+    private final RSocketRequester rsocketRequester;
+
+    public MyService(RSocketRequester.Builder rsocketRequesterBuilder) {
+        this.rsocketRequester = rsocketRequesterBuilder.tcp("example.org", 9898);
+    }
+
+    public Mono<User> someRSocketCall(String name) {
+        return this.rsocketRequester.route("user").data(name).retrieveMono(User.class);
+    }
+
+}
+```
+
+## 10. Security
+
+如果[Spring Security](https://spring.io/projects/spring-security)在classpath上，那么Web应用程序默认是安全的。Spring Boot依靠Spring Security的内容协商策略来决定是使用`httpBasic`还是`formLogin`。要为Web应用添加方法级安全，你也可以添加`@EnableGlobalMethodSecurity`，并加上你想要的设置。其他信息可以在[Spring Security Reference Guide](https://docs.spring.io/spring-security/site/docs/5.5.1/reference/html5/#jc-method)中找到。
+
+默认的`UserDetailsService`有一个用户。用户名是`user`，密码是随机的，当应用程序启动时，密码会被打印在INFO级别，如以下例子所示。
+
+```text
+Using generated security password: 78fa095d-3f4c-48b1-ad50-e24c31d5cf35
+```
+
+> 如果你微调你的日志配置，确保`org.springframework.boot.autoconfigure.security`类别被设置为记录`INFO`级的消息。否则，默认密码不会被打印出来。
+
+你可以通过提供`spring.security.user.name`和`spring.security.user.password`来改变用户名和密码。
+
+你在Web应用程序中默认得到的基本功能是。
+
+* 一个`UserDetailsService`（如果是WebFlux应用程序，则为`ReactiveUserDetailsService`）bean，具有内存存储和一个具有生成密码的单一用户（关于用户的属性，见[`SecurityProperties.User`](https://docs.spring.io/spring-boot/docs/2.5.3/api/org/springframework/boot/autoconfigure/security/SecurityProperties.User.html)）。
+* 整个应用程序（包括执行器端点，如果执行器在classpath上）基于表单的登录或HTTP Basic安全（取决于请求中的`Accept`头）。
+* 一个`DefaultAuthenticationEventPublisher`用于发布认证事件。
+
+你可以通过添加一个bean来提供一个不同的`AuthenticationEventPublisher`。
+
+### 10.1. MVC Security
+
+默认的安全配置在`SecurityAutoConfiguration`和`UserDetailsServiceAutoConfiguration`中实现。`SecurityAutoConfiguration`导入`SpringBootWebSecurityConfiguration`用于Web安全，`UserDetailsServiceAutoConfiguration`配置认证，这也与非Web应用有关。要完全关闭默认的Web应用安全配置，或结合多个Spring安全组件，如OAuth2客户端和资源服务器，请添加一个`SecurityFilterChain`类型的bean（这样做不会禁用`UserDetailsService`配置或Actuator的安全性）。
+
+为了关闭 `UserDetailsService` 的配置，你可以添加一个`UserDetailsService`、`AuthenticationProvider`或`AuthenticationManager`类型的bean。
+
+访问规则可以通过添加一个自定义的`SecurityFilterChain`或`WebSecurityConfigurerAdapter`bean来重写。Spring Boot提供了方便的方法，可以用来覆盖执行器端点和静态资源的访问规则。`EndpointRequest`可用于创建一个基于`management.endpoints.web.base-path`属性的`RequestMatcher`。`PathRequest`可以用来为常用位置的资源创建`RequestMatcher`。
+
+### 10.2. WebFlux Security
+
+与Spring MVC应用程序类似，你可以通过添加`spring-boot-starter-security`依赖关系来保护你的WebFlux应用程序。默认的安全配置是在`ReactiveSecurityAutoConfiguration`和`UserDetailsServiceAutoConfiguration`中实现。`ReactiveSecurityAutoConfiguration` 导入 `WebFluxSecurityConfiguration` 用于Web安全，`UserDetailsServiceAutoConfiguration` 用于配置认证，这在非Web应用中也很重要。要完全关闭默认的Web应用安全配置，你可以添加一个`WebFilterChainProxy`类型的bean（这样做不会禁用`UserDetailsService`配置或Actuator的安全）。
+
+要关闭 `UserDetailsService` 配置，你可以添加一个 `ReactiveUserDetailsService` 或 `ReactiveAuthenticationManager` 类型的bean。
+
+访问规则和多个Spring安全组件的使用，如OAuth 2客户端和资源服务器，可以通过添加一个自定义的`SecurityWebFilterChain`bean来配置。Spring Boot提供了方便的方法，可用于覆盖执行器端点和静态资源的访问规则。`EndpointRequest`可用于创建基于`management.endpoints.web.base-path`属性的`ServerWebExchangeMatcher`。
+
+`PathRequest`可以用来为常用位置的资源创建一个`ServerWebExchangeMatcher`。
+
+例如，你可以通过添加以下内容来定制你的安全配置。
+
+```java
+import org.springframework.boot.autoconfigure.security.reactive.PathRequest;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.web.server.ServerHttpSecurity;
+import org.springframework.security.web.server.SecurityWebFilterChain;
+
+@Configuration(proxyBeanMethods = false)
+public class MyWebFluxSecurityConfiguration {
+
+    @Bean
+    public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
+        http.authorizeExchange((spec) -> {
+            spec.matchers(PathRequest.toStaticResources().atCommonLocations()).permitAll();
+            spec.pathMatchers("/foo", "/bar").authenticated();
+        });
+        http.formLogin();
+        return http.build();
+    }
+
+}
+```
+
+### 10.3. OAuth2
+
+[OAuth2](https://oauth.net/2/)是一个被广泛使用的授权框架，由Spring支持。
+
+#### 10.3.1. Client
+
+如果你的classpath上有`spring-security-oauth2-client`，你可以利用一些自动配置来设置一个OAuth2/Open ID Connect客户端。这个配置利用了`OAuth2ClientProperties`下的属性。同样的属性也适用于servlet和响应式应用程序。
+
+你可以在`spring.security.oauth2.client`前缀下注册多个OAuth2客户端和提供者，如以下例子所示。
+
+```yaml
+spring:
+  security:
+    oauth2:
+      client:
+        registration:
+          my-client-1:
+            client-id: "abcd"
+            client-secret: "password"
+            client-name: "Client for user scope"
+            provider: "my-oauth-provider"
+            scope: "user"
+            redirect-uri: "https://my-redirect-uri.com"
+            client-authentication-method: "basic"
+            authorization-grant-type: "authorization-code"
+
+          my-client-2:
+            client-id: "abcd"
+            client-secret: "password"
+            client-name: "Client for email scope"
+            provider: "my-oauth-provider"
+            scope: "email"
+            redirect-uri: "https://my-redirect-uri.com"
+            client-authentication-method: "basic"
+            authorization-grant-type: "authorization_code"
+
+        provider:
+          my-oauth-provider:
+            authorization-uri: "https://my-auth-server/oauth/authorize"
+            token-uri: "https://my-auth-server/oauth/token"
+            user-info-uri: "https://my-auth-server/userinfo"
+            user-info-authentication-method: "header"
+            jwk-set-uri: "https://my-auth-server/token_keys"
+            user-name-attribute: "name"
+```
+
+对于支持[OpenID Connect discovery](https://openid.net/specs/openid-connect-discovery-1_0.html)的OpenID Connect提供商，配置可以进一步简化。提供者需要配置一个`issuer-uri`，这是它作为其发行者标识符所主张的URI。例如，如果提供的`issuer-uri`是 `https://example.com`，那么将向 `https://example.com/.well-known/openid-configuration` 提出`OpenID Provider Configuration Request`。结果将是一个 `OpenID Provider Configuration Response`。下面的例子显示了如何用`issuer-uri`来配置OpenID连接提供商。
+
+```yaml
+spring:
+  security:
+    oauth2:
+      client:
+        provider:
+          oidc-provider:
+            issuer-uri: "https://dev-123456.oktapreview.com/oauth2/default/"
+```
+
+默认情况下，Spring Security的`OAuth2LoginAuthenticationFilter`只处理匹配`/login/oauth2/code/*`的URL。如果你想自定义`redirect-uri`以使用不同的模式，你需要提供配置来处理该自定义模式。例如，对于Servlet应用程序，你可以添加你自己的`SecurityFilterChain`，类似于以下内容。
+
+```java
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.web.SecurityFilterChain;
+
+@Configuration(proxyBeanMethods = false)
+public class MyOAuthClientConfiguration {
+
+    @Bean
+    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+        http.authorizeRequests().anyRequest().authenticated();
+        http.oauth2Login().redirectionEndpoint().baseUri("custom-callback");
+        return http.build();
+    }
+
+}
+```
+
+> Spring Boot自动配置了一个`InMemoryOAuth2AuthorizedClientService`，它被Spring Security用来管理客户端注册。`InMemoryOAuth2AuthorizedClientService`的功能有限，我们建议只在开发环境中使用它。对于生产环境，请考虑使用`JdbcOAuth2AuthorizedClientService`或创建你自己的`OAuth2AuthorizedClientService`实现。
+
+##### OAuth2 client registration for common providers
+
+对于常见的OAuth2和OpenID提供者，包括Google、Github、Facebook和Okta，我们提供了一组提供者的默认值（分别为`google`、`github`、`facebook`和`okta`）。
+
+如果你不需要定制这些提供者，你可以将`provider`属性设置为你需要推断默认值的那个。另外，如果客户端注册的密钥与默认支持的提供者相匹配，Spring Boot也会推断出这一点。
+
+换句话说，下面例子中的两个配置使用的是Google提供者。
+
+```yaml
+spring:
+  security:
+    oauth2:
+      client:
+        registration:
+          my-client:
+            client-id: "abcd"
+            client-secret: "password"
+            provider: "google"
+          google:
+            client-id: "abcd"
+            client-secret: "password"
+
+```
+
+#### 10.3.2. 资源服务器
+
 TODO
 
 {{#include ../license.md}}
