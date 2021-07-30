@@ -23,18 +23,18 @@ jobs:
           SOURCE: ./
           TARGET: /home/temp_doc/
       - name: executing remote ssh commands using ssh key
-          uses: appleboy/ssh-action@master
-          with:
-            host: ${{ secrets.SSH_HOST }}
-            username: ${{ secrets.SSH_USERNAME }}
-            key: ${{ secrets.DEPLOY_KEY }}
-            port: 22
-            script: |
-              mdbook -V
-              ls /home/temp_doc
-              cd /home/temp_doc && mdbook clean && mdbook build
-              rm -rf /www/wwwroot/doc.springcloud.io/*
-              mv /home/temp_doc/book/*  /www/wwwroot/doc.springcloud.io/
-              rm -rf /home/temp_doc/*
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.DEPLOY_KEY }}
+          port: 22
+          script: |
+            mdbook -V
+            ls /home/temp_doc
+            cd /home/temp_doc && mdbook clean && mdbook build
+            rm -rf /www/wwwroot/doc.springcloud.io/*
+            mv /home/temp_doc/book/*  /www/wwwroot/doc.springcloud.io/
+            rm -rf /home/temp_doc/*
 
 
