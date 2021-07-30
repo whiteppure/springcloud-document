@@ -140,6 +140,30 @@ $ JAVA_OPTS=-Xmx1024m spring run hello.groovy
 
 与同等的Java应用程序不同，你不需要在你的Groovy脚本中包含一个公共静态`void main(String[] args)`方法。一个SpringApplication会被自动创建，你的编译后的代码会作为源码。
 
+# 自定义依赖性管理
+
+默认情况下，CLI在解析@Grab依赖关系时使用`spring-boot-dependencies`中声明的依赖关系管理。可以通过使用`@DependencyManagementBom`注解来配置额外的依赖性管理，它覆盖了默认的依赖性管理。该注解的值应指定一个或多个Maven BOM的坐标`（groupId:artifactId:version）`。
+
+例如，考虑下面的声明。
+```java
+@DependencyManagementBom("com.example.custom-bom:1.0.0")
+
+```
+
+前面的声明在`com/example/custom-versions/1.0.0/`下的Maven仓库中获取了`custom-bom-1.0.0.pom`。
+
+当你指定多个BOM时，它们会按照你声明的顺序应用，如下例所示。
+
+```java
+@DependencyManagementBom([
+    "com.example.custom-bom:1.0.0",
+    "com.example.another-bom:1.0.0"])
+
+```
+
+前面的例子表明，Another-bom中的依赖性管理覆盖了custom-bom中的依赖性管理。
+
+你可以在任何可以使用 @Grab 的地方使用` @DependencyManagementBom`。然而，为了确保依赖管理的顺序一致，你在你的应用程序中最多只能使用一次`@DependencyManagementBom`。
 
 
 {{#include ../license.md}}
