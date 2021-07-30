@@ -3453,6 +3453,267 @@ spring:
 
 #### 10.3.2. 资源服务器
 
+如果你的classpath上有`spring-security-oauth2-resource-server`，Spring Boot可以设置一个OAuth2资源服务器。对于JWT配置，需要指定JWK Set URI或OIDC Issuer URI，如以下例子所示。
+
+```yaml
+spring:
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: "https://example.com/oauth2/default/v1/keys"
+```
+
+```yaml
+spring:
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: "https://dev-123456.oktapreview.com/oauth2/default/"
+
+```
+
+> 如果授权服务器不支持JWK Set URI，你可以在资源服务器上配置用于验证JWT签名的公钥。这可以通过`spring.security.oauth2.resourceserver.jwt.public-key-location`属性来完成，其中的值需要指向一个包含PEM编码的x509格式的公钥的文件。
+
+同样的属性适用于Servlet和反应式应用程序。
+
+另外，你可以为Servlet应用程序定义你自己的`JwtDecoder`bean，或者为反应式应用程序定义`ReactiveJwtDecoder`。
+
+在使用不透明令牌而不是JWT的情况下，你可以配置以下属性，通过自省来验证令牌。
+
+```yaml
+spring:
+  security:
+    oauth2:
+      resourceserver:
+        opaquetoken:
+          introspection-uri: "https://example.com/check-token"
+          client-id: "my-client-id"
+          client-secret: "my-client-secret"
+
+```
+
+同样，同样的属性也适用于servlet和reactive应用程序。
+
+另外，你可以为Servlet应用程序定义你自己的`OpaqueTokenIntrospector` bean，或者为反应式应用程序定义`ReactiveOpaqueTokenIntrospector`。
+
+#### 10.3.3. 授权服务器
+
+目前，Spring Security并不提供对实现OAuth 2.0授权服务器的支持。然而，这个功能可以从[Spring Security OAuth](https://spring.io/projects/spring-security-oauth)项目中获得，该项目最终将被Spring Security完全取代。在此之前，你可以使用`spring-security-oauth2-autoconfigure`模块来轻松设置一个OAuth 2.0授权服务器，具体说明请参见其[document](https://docs.spring.io/spring-security-oauth2-boot/)。
+
+### 10.4. SAML 2.0
+
+#### 10.4.1. Relying Party
+
+如果你的classpath上有`spring-security-saml2-service-provider`，你可以利用一些自动配置来设置一个SAML 2.0的信赖方。这个配置利用了`Saml2RelyingPartyProperties`下的属性。
+
+依赖方注册代表了身份提供商（IDP）和服务提供商（SP）之间的配对配置。你可以在`spring.security.saml2.relyingparty`前缀下注册多个依赖方，如以下例子所示。
+
+```yaml
+spring:
+  security:
+    saml2:
+      relyingparty:
+        registration:
+          my-relying-party1:
+            signing:
+              credentials:
+              - private-key-location: "path-to-private-key"
+                certificate-location: "path-to-certificate"
+            decryption:
+              credentials:
+              - private-key-location: "path-to-private-key"
+                certificate-location: "path-to-certificate"
+            identityprovider:
+              verification:
+                credentials:
+                - certificate-location: "path-to-verification-cert"
+              entity-id: "remote-idp-entity-id1"
+              sso-url: "https://remoteidp1.sso.url"
+
+          my-relying-party2:
+            signing:
+              credentials:
+              - private-key-location: "path-to-private-key"
+                certificate-location: "path-to-certificate"
+            decryption:
+              credentials:
+              - private-key-location: "path-to-private-key"
+                certificate-location: "path-to-certificate"
+            identityprovider:
+              verification:
+                credentials:
+                - certificate-location: "path-to-other-verification-cert"
+              entity-id: "remote-idp-entity-id2"
+              sso-url: "https://remoteidp2.sso.url"
+```
+
+### 10.5. Actuator Security
+
+为了安全起见，所有除`/health`以外的执行器都被默认禁用。`management.endpoints.web.exposure.include`属性可以用来启用执行器。
+
+如果Spring Security在classpath上，并且没有其他`WebSecurityConfigurerAdapter`或`SecurityFilterChain` bean存在，所有`/health`以外的执行器都由Spring Boot自动配置保护。如果你定义了一个自定义的`WebSecurityConfigurerAdapter`或`SecurityFilterChain`bean，Spring Boot的自动配置就会退出，你将完全控制执行器的访问规则。
+
+> 在设置 `management.endpoints.web.exposure.include` 之前，确保暴露的执行器不包含敏感信息，并且/或者通过将其置于防火墙或Spring Security之类的东西来确保安全。
+
+#### 10.5.1. 跨站请求伪造保护
+
+由于Spring Boot依赖于Spring Security的默认值，CSRF保护默认是打开的。这意味着在使用默认安全配置时，需要`POST`关闭和记录器端点）、`PUT`或`DELETE`的执行器端点会出现403禁止的错误。
+
+> 我们建议只有在你创建的服务被非浏览器客户端使用时才完全禁用CSRF保护。
+
+关于CSRF保护的其他信息可以在[Spring Security Reference Guide](https://docs.spring.io/spring-security/site/docs/5.5.1/reference/html5/#csrf)中找到。
+
+## 11. 使用SQL数据库
+
+[Spring Framework](https://spring.io/projects/spring-framework)提供了对SQL数据库工作的广泛支持，从使用`JdbcTemplate`的直接JDBC访问到完整的 "object relational mapping" 技术，如Hibernate。[Spring Data](https://spring.io/projects/spring-data)提供了额外的功能：直接从接口创建`Repository`实现，并使用惯例从你的方法名称中生成查询。
+
+### 11.1. 配置一个数据源
+
+Java的`javax.sql.DataSource`接口提供了一个处理数据库连接的标准方法。传统上，`DataSource` 使用一个 `URL` 和一些凭证来建立一个数据库连接。
+
+> 更多高级的例子请参见["How-to"部分](https://docs.spring.io/spring-boot/docs/current/reference/html/howto.html#howto.data-access.configure-custom-datasource)，通常是对数据源的配置进行完全控制。
+
+#### 11.1.1. 嵌入式数据库支持
+
+通过使用内存中的嵌入式数据库来开发应用程序通常是很方便的。很明显，内存数据库不提供持久性存储。你需要在你的应用程序开始时填充你的数据库，并准备在你的应用程序结束时丢弃数据。
+
+> "How-to" 包括一个[关于如何初始化数据库的部分](https://docs.spring.io/spring-boot/docs/current/reference/html/howto.html#howto.data-initialization)。
+
+Spring Boot可以自动配置嵌入式[H2](https://www.h2database.com/)、[HSQL](http://hsqldb.org/)和[Derby](https://db.apache.org/derby/) 数据库。你不需要提供任何连接URL。你只需要包括一个你想使用的嵌入式数据库的构建依赖。如果在classpath上有多个嵌入式数据库，设置`spring.datasource.embedded-database-connection`配置属性来控制使用哪一个。将该属性设置为 `none`，可以禁止对嵌入式数据库进行自动配置。
+
+> 如果你在测试中使用这个功能，你可能会注意到，无论你使用多少个application context，整个测试套件都在重复使用同一个数据库。如果你想确保每个上下文都有一个单独的嵌入式数据库，你应该把`spring.datasource.generate-unique-name`设置为`true`。
+
+例如，典型的POM依赖关系如下。
+
+```xml
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-data-jpa</artifactId>
+</dependency>
+<dependency>
+    <groupId>org.hsqldb</groupId>
+    <artifactId>hsqldb</artifactId>
+    <scope>runtime</scope>
+</dependency>
+```
+
+你需要依赖`spring-jdbc`来自动配置一个嵌入式数据库。在这个例子中，它是通过 `spring-boot-starter-data-jpa` 传递依赖到系统的。
+
+如果出于某种原因，你确实为一个嵌入式数据库配置了连接URL，请注意确保数据库的自动关机功能被禁用。如果你使用H2，你应该使用`DB_CLOSE_ON_EXIT=FALSE`来做到这一点。如果你使用HSQLDB，你应该确保不使用`shutdown=true`。禁用数据库的自动关闭让Spring Boot控制数据库的关闭时间，从而确保一旦不再需要对数据库的访问，就会发生关闭。
+
+#### 11.1.2. 与生产数据库的连接
+
+生产数据库连接也可以通过使用池化数据源来自动配置。
+
+#### 11.1.3. 数据源配置
+
+数据源配置由`spring.datasource.*`中的外部配置属性控制。例如，你可以在`application.properties`中声明以下部分。
+
+```yaml
+spring:
+  datasource:
+    url: "jdbc:mysql://localhost/test"
+    username: "dbuser"
+    password: "dbpass"
+
+```
+
+你至少应该通过设置`spring.datasource.url`属性指定URL。否则，Spring Boot会尝试自动配置一个嵌入式数据库。
+
+Spring Boot可以从URL中推断出大多数数据库的JDBC驱动类。如果你需要指定一个特定的类，你可以使用`spring.datasource.driver-class-name`属性。
+
+为了创建一个池化的`DataSource`，我们需要能够验证一个有效的`Driver`类是可用的，所以我们在做任何事情之前都要检查。换句话说，如果你设置了`spring.datasource.driver-class-name=com.mysql.jdbc.Driver`，那么这个类必须是可加载的。
+
+更多支持的选项请参见[`DataSourceProperties`](https://github.com/spring-projects/spring-boot/tree/v2.5.3/spring-boot-project/spring-boot-autoconfigure/src/main/java/org/springframework/boot/autoconfigure/jdbc/DataSourceProperties.java)。这些是标准的选项，无论[实际的实现](https://docs.spring.io/spring-boot/docs/current/reference/html/features.html#features.sql.datasource.connection-pool)如何，都能发挥作用。也可以通过使用各自的前缀（`spring.datasource.hikari.*` , `spring.datasource.tomcat.*` , `spring.datasource.dbcp2.*` , 和`spring.datasource.oracleucp.*`）来微调具体的实现设置。请参考你所使用的连接池实现的文档以了解更多细节。
+
+例如，如果你使用[Tomcat连接池](https://tomcat.apache.org/tomcat-9.0-doc/jdbc-pool.html#Common_Attributes)，你可以定制许多额外的设置，如以下例子所示。
+
+```yaml
+spring:
+  datasource:
+    tomcat:
+      max-wait: 10000
+      max-active: 50
+      test-on-borrow: true
+
+```
+
+这将设置池子在没有连接可用时等待10000ms后抛出一个异常，限制最大连接数为50，并在从池子中借用连接前验证连接。
+
+#### 11.1.4. 支持的连接池
+
+Spring Boot使用以下算法来选择特定的实现。
+
+1. 我们更喜欢[HikariCP](https://github.com/brettwooldridge/HikariCP)，因为其性能和并发性。如果HikariCP可用，我们总是选择它。
+2. 2.否则，如果Tomcat池的`DataSource'可用，我们就使用它。
+3. 否则，如果[Commons DBCP2](https://commons.apache.org/proper/commons-dbcp/)是可用的，我们就使用它。
+4. 如果HikariCP、Tomcat和DBCP2都不可用，并且Oracle UCP可用，我们就使用它。
+
+如果你使用`spring-boot-starter-jdbc`或`spring-boot-starter-data-jpa` "starters"，你会自动得到对`HikariCP`的依赖。
+
+你可以完全绕过这个算法，通过设置`spring.datasource.type`属性来指定要使用的连接池。如果你在Tomcat容器中运行你的应用程序，这一点尤其重要，因为`tomcat-jdbc`是默认提供的。
+
+额外的连接池总是可以手动配置的，使用`DataSourceBuilder`。如果你定义你自己的`DataSource`bean，就不会发生自动配置。`DataSourceBuilder`支持以下的连接池。
+
+* HikariCP
+* Tomcat pooling `Datasource`
+* Commons DBCP2
+* Oracle UCP & `OracleDataSource`
+* Spring Framework’s `SimpleDriverDataSource`
+* H2 `JdbcDataSource`
+* PostgreSQL `PGSimpleDataSource`
+
+#### 11.1.5. 连接到一个JNDI数据源
+
+如果你将Spring Boot应用程序部署到应用服务器上，你可能想通过使用应用服务器的内置功能来配置和管理你的数据源，并通过使用JNDI来访问它。
+
+`spring.datasource.jndi-name`属性可以作为`spring.datasource.url`、`spring.datasource.username`和`spring.datasource.password`属性的替代品，从特定的JNDI位置访问`DataSource`。例如，`application.properties`中的以下部分显示了如何访问JBoss AS定义的`DataSource`。
+
+```yaml
+spring:
+  datasource:
+    jndi-name: "java:jboss/datasources/customers"
+```
+
+### 11.2. 使用JdbcTemplate
+
+Spring的`JdbcTemplate`和`NamedParameterJdbcTemplate`类是自动配置的，你可以将它们直接`@Autowire`到你自己的Bean中，如下例所示。
+
+```java
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Component;
+
+@Component
+public class MyBean {
+
+    private final JdbcTemplate jdbcTemplate;
+
+    public MyBean(JdbcTemplate jdbcTemplate) {
+        this.jdbcTemplate = jdbcTemplate;
+    }
+
+    public void doSomething() {
+        this.jdbcTemplate ...
+    }
+
+}
+```
+
+你可以通过使用`spring.jdbc.template.*`属性来定制模板的一些属性，如以下例子所示。
+
+```yaml
+spring:
+  jdbc:
+    template:
+      max-rows: 500
+```
+
+`NamedParameterJdbcTemplate`在幕后重复使用同一个`JdbcTemplate`实例。如果定义了一个以上的 `JdbcTemplate`，并且不存在主要的候选者，`NamedParameterJdbcTemplate` 就不会被自动配置。
+
+### 11.3. JPA 和 Spring Data JPA
+
 TODO
 
 {{#include ../license.md}}
