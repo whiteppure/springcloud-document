@@ -20,6 +20,7 @@ $ java org.springframework.boot.loader.JarLauncher
 $ jar -xf myapp.jar
 $ java -cp BOOT-INF/classes:BOOT-INF/lib/* com.example.MyApplication
 ```
+
 **笔记**
 >在应用程序的主方法上使用JarLauncher有一个可预测的类路径顺序的额外好处。jar包含一个类路径。当构造类路径时，JarLauncher会使用这个idx文件。
 
@@ -57,6 +58,7 @@ $ cf push acloudyspringtime -p target/demo-0.0.1-SNAPSHOT.jar
 有关更多选项，请参阅[cf push文档](https://docs.cloudfoundry.org/cf-cli/getting-started.html#push )。如果有云铸造清单。Yml文件在同一目录中，它被认为。
 
 此时，cf开始上传您的应用程序，生成类似如下示例的输出:
+
 ```java
 Uploading acloudyspringtime... OK
 Preparing to start acloudyspringtime... OK
@@ -80,6 +82,7 @@ Checking status of app 'acloudyspringtime'...
 
 App started
 ```
+
 祝贺你! 该应用程序现在已经上线了!
 
 一旦你的应用程序上线，你可以通过使用cf apps命令来验证部署的应用程序的状态，如下面的例子所示。
@@ -146,7 +149,9 @@ spec:
         exec:
           command: ["sh", "-c", "sleep 10"]
 ```
+
 一旦预停止钩子完成，SIGTERM将被发送到容器，优雅的关闭将开始，允许任何剩余的正在运行的请求完成。
+
 **笔记**
 >当Kubernetes向pod发送一个SIGTERM信号时，它会等待一个指定的时间，称为终止宽限期（默认为30秒）。如果容器在宽限期过后仍在运行，它们会被发送SIGKILL信号并被强行删除。如果pod的关闭时间超过30秒，这可能是因为你增加了spring.lifecycle.timeout-per-shutdown-phase，请确保通过设置Pod YAML中的 terminationGracePeriodSeconds选项来增加终止宽限期。
 
@@ -159,13 +164,16 @@ Heroku是另一个流行的PaaS平台。为了定制Heroku的构建，你提供�
 ```java
 web: java -Dserver.port=$PORT -jar target/demo-0.0.1-SNAPSHOT.jar
 ```
+
 Spring Boot将-D参数作为可从Spring环境实例中访问的属性。server.port配置属性被反馈给嵌入式Tomcat、Jetty或Undertow实例，然后在启动时使用该端口。$PORT环境变量是由Heroku PaaS分配给我们的。
 
 这应该是你需要的一切。Heroku部署最常见的工作流程是用git推送代码到生产中，如下面的例子所示。
 ```java
 $ git push heroku main
 ```
+
 这将产生以下结果:
+
 ```java
 Initializing repository, done.
 Counting objects: 95, done.
@@ -236,6 +244,7 @@ To git@heroku.com:agile-sierra-1405.git
 ```java
 server.port=5000
 ```
+
 **温馨提示**
 
 >上传二进制文件而不是源代码
@@ -333,6 +342,7 @@ env_variables:
   ENCRYPT_KEY: your_encryption_key_here
 
 ```
+
 你可以通过在构建配置中添加项目ID来部署该应用（例如，使用Maven插件），如下例所示。
 
 ```java
@@ -345,6 +355,7 @@ env_variables:
     </configuration>
 </plugin>
 ```
+
 然后用`mvn appengine:deploy`进行部署（如果你需要先进行身份验证，则构建失败）。
 
 ## 3. Installing Spring Boot 程序
@@ -368,6 +379,7 @@ env_variables:
     </configuration>
 </plugin>
 ```
+
 下面的例子显示了相当于Gradle的配置。
 
 ```java
@@ -375,6 +387,7 @@ bootJar {
     launchScript()
 }
 ```
+
 然后你可以通过输入`./my-application.jar`（其中my-application是你的工件的名称）来运行你的应用程序。包含jar的目录将作为你的应用程序的工作目录。
 
 
@@ -406,6 +419,7 @@ $ sudo ln -s /var/myapp/myapp.jar /etc/init.d/myapp
 ```java
 $ service myapp start
 ```
+
 **温馨提示**
 >如果你的应用程序无法启动，请检查写入/var/log/<appname>.log的日志文件是否有错误。
 
@@ -424,7 +438,9 @@ $ update-rc.d myapp defaults <priority>
 ```java
 $ chown bootapp:bootapp your-app.jar
 ```
+
 在这种情况下，默认的可执行脚本以bootapp用户的身份运行应用程序。
+
 **温馨提示**
 >为了减少应用程序的用户账户被入侵的机会，你应该考虑防止它使用登录的外壳。例如，你可以将该账户的shell设置为/usr/sbin/nologin。
 
@@ -432,10 +448,12 @@ $ chown bootapp:bootapp your-app.jar
 ```java
 $ chmod 500 your-app.jar
 ```
+
 其次，如果你的应用程序或运行它的账户被入侵，你也应该采取措施限制损失。如果攻击者确实获得了访问权，他们可以使jar文件可写并改变其内容。防止这种情况的一个方法是通过使用chattr使其不可更改，如下面的例子中所示。
 ```java
 $ sudo chattr +i your-app.jar
 ```
+
 这将防止任何用户，包括root，修改jar。
 
 如果root被用来控制应用程序的服务，并且你使用一个.conf文件来定制它的启动，那么.conf文件就会被root用户读取和评估。它应该被相应地保护起来。使用chmod使该文件只能由所有者读取，并使用chown使root成为所有者，如下例所示。
@@ -474,6 +492,7 @@ WantedBy=multi-user.target
 ```java
 $ systemctl enable myapp.service
 ```
+
 更多细节请参考man systemctl。
 
 #### 3.2.3. 定制启动脚本
@@ -542,6 +561,7 @@ myapp.conf
 JAVA_OPTS=-Xmx1024M
 LOG_FOLDER=/custom/log/folder
 ```
+
 **温馨提示**
 >如果你不喜欢把配置文件放在jar文件旁边，你可以设置一个CONF_FOLDER环境变量来定制配置文件的位置。
 
