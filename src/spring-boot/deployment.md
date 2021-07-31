@@ -22,6 +22,7 @@ $ java -cp BOOT-INF/classes:BOOT-INF/lib/* com.example.MyApplication
 ```
 
 **笔记**
+
 >在应用程序的主方法上使用JarLauncher有一个可预测的类路径顺序的额外好处。jar包含一个类路径。当构造类路径时，JarLauncher会使用这个idx文件。
 
 更有效的容器映像还可以通过为依赖项、应用程序类和资源(通常更改更频繁)创建单独的层来创建。
@@ -53,6 +54,7 @@ $ cf push acloudyspringtime -p target/demo-0.0.1-SNAPSHOT.jar
 ```
 
 **笔记**
+
 >在前面的示例中，我们将clouddyspringtime替换为应用程序名称中cf的任何值。
 
 有关更多选项，请参阅[cf push文档](https://docs.cloudfoundry.org/cf-cli/getting-started.html#push )。如果有云铸造清单。Yml文件在同一目录中，它被认为。
@@ -126,6 +128,7 @@ public class MyBean implements EnvironmentAware {
 所有 Cloud Foundry 属性都以 vcap 为前缀。您可以使用 vcap 属性来访问应用程序信息（如应用程序的公共 URL）和服务信息（如数据库凭证）。请参阅 ["CloudFoundryVcapEnvironmentPostProcessor "](https://docs.spring.io/spring-boot/docs/2.5.3/api/org/springframework/boot/cloud/CloudFoundryVcapEnvironmentPostProcessor.html )Javadoc 了解完整的详细信息。
 
 **温馨提示**
+
 >Java CFEnv项目更适合于配置数据源这样的任务。
 
 ### 2.2. Kubernetes
@@ -153,6 +156,7 @@ spec:
 一旦预停止钩子完成，SIGTERM将被发送到容器，优雅的关闭将开始，允许任何剩余的正在运行的请求完成。
 
 **笔记**
+
 >当Kubernetes向pod发送一个SIGTERM信号时，它会等待一个指定的时间，称为终止宽限期（默认为30秒）。如果容器在宽限期过后仍在运行，它们会被发送SIGKILL信号并被强行删除。如果pod的关闭时间超过30秒，这可能是因为你增加了spring.lifecycle.timeout-per-shutdown-phase，请确保通过设置Pod YAML中的 terminationGracePeriodSeconds选项来增加终止宽限期。
 
 ### 2.3. Heroku
@@ -255,6 +259,7 @@ deploy:
 ```
 
 **温馨提示**
+
 >通过设置环境类型减少成本
 默认情况下，Elastic Beanstalk环境是负载平衡的。负载平衡器有很大的成本。为了避免这种成本，请将环境类型设置为 "单实例"，如[亚马逊文档](https://docs.aws.amazon.com/elasticbeanstalk/latest/dg/environments-create-wizard.html#environments-create-wizard-capacity )中所述。你也可以通过使用CLI和以下命令来创建单实例环境。
 ```java
@@ -278,6 +283,7 @@ $ boxfuse run myapp-1.0.jar -env=prod
 更多选项见[boxfuse运行文档](https://boxfuse.com/docs/commandline/run.html )。如果当前目录下有[boxfuse.conf](https://boxfuse.com/docs/commandline/#configuration )文件，就会考虑它。
 
 **温馨提示**
+
 >默认情况下，Boxfuse会在启动时激活一个名为boxfuse的Spring配置文件。如果你的可执行jar或war文件包含一个[application-boxfuse.properties](https://boxfuse.com/docs/payloads/springboot.html#configuration )文件，Boxfuse会根据它所包含的属性进行配置。
 
 在这一点上，`boxfuse`为你的应用程序创建了一个图像，并将其上传，在AWS上配置和启动必要的资源，从而产生类似于以下例子的输出。
@@ -363,9 +369,11 @@ env_variables:
 除了通过使用java -jar运行Spring Boot应用程序外，还可以为Unix系统制作完全可执行的应用程序。完全可执行的jar可以像其他可执行的二进制文件一样执行，也可以用init.d或systemd注册。这有助于在普通生产环境中安装和管理Spring Boot应用程序。
 
 **慎重1** 
+
 >完全可执行的罐子通过在文件的前面嵌入一个额外的脚本来工作。目前，有些工具不接受这种格式，所以你不一定能使用这种技术。例如，jar -xf可能会默默地无法提取一个已经被做成完全可执行的jar或war文件。建议你只有在打算直接执行你的jar或war，而不是用java -jar运行它或将它部署到servlet容器中时，才使它完全可执行。
 
 **慎重2**
+
 >一个zip64格式的jar文件不能被完全执行。试图这样做将导致一个jar文件在直接执行或用java -jar执行时被报告为损坏。一个标准格式的jar文件包含一个或多个zip64格式的嵌套jar，可以完全执行。
 >
 
@@ -421,6 +429,7 @@ $ service myapp start
 ```
 
 **温馨提示**
+
 >如果你的应用程序无法启动，请检查写入/var/log/<appname>.log的日志文件是否有错误。
 
 你也可以通过使用你的标准操作系统工具来标记该应用程序自动启动。例如，在Debian上，你可以使用以下命令。
@@ -432,6 +441,7 @@ $ update-rc.d myapp defaults <priority>
 #####  确保init.d服务的安全
 
 **笔记**
+
 >以下是一套关于如何保护作为init.d服务运行的Spring Boot应用程序的指南。它并不打算成为一份详尽的清单，列出为加固应用程序及其运行环境所应做的一切。
 
 当以root身份执行时，如root被用来启动init.d服务时，默认的可执行脚本会以RUN_AS_USER环境变量中指定的用户身份运行应用程序。当环境变量没有设置时，会使用拥有jar文件的用户来代替。你不应该以root身份运行Spring Boot应用程序，所以RUN_AS_USER不应该是root，你的应用程序的jar文件不应该由root拥有。相反，创建一个特定的用户来运行你的应用程序，并设置RUN_AS_USER环境变量或使用chown来使其成为jar文件的所有者，如下例所示。
@@ -442,6 +452,7 @@ $ chown bootapp:bootapp your-app.jar
 在这种情况下，默认的可执行脚本以bootapp用户的身份运行应用程序。
 
 **温馨提示**
+
 >为了减少应用程序的用户账户被入侵的机会，你应该考虑防止它使用登录的外壳。例如，你可以将该账户的shell设置为/usr/sbin/nologin。
 
 你还应该采取措施，防止你的应用程序的jar文件被修改。首先，配置其权限，使其不能被写入，只能由其所有者读取或执行，如下面的例子所示。
@@ -481,9 +492,11 @@ WantedBy=multi-user.target
 ```
 
 **重要**
+
 >记住要为你的应用程序改变描述、用户和ExecStart字段。
 
 **笔记**
+
 > ExecStart字段没有声明脚本动作命令，这意味着默认使用的是运行命令。
 
 注意，与作为 init.d 服务运行时不同，运行应用程序的用户、PID 文件和控制台日志文件由 systemd 自己管理，因此必须在 "服务 "脚本中使用适当的字段进行配置。更多细节请参考[服务单元配置手册](https://www.freedesktop.org/software/systemd/man/systemd.service.html )。
@@ -552,6 +565,7 @@ $ systemctl enable myapp.service
 | `STOP_WAIT_TIME` |当停止应用程序时，在强制关机前要等待的时间（秒）（默认为`60`）。|
 
 **笔记**
+
 >PID_FOLDER、LOG_FOLDER 和 LOG_FILENAME 变量只对 init.d 服务有效。对于systemd来说，相应的自定义变量可以通过 "service "脚本来实现。更多细节请参见服务[单元配置手册](https://www.freedesktop.org/software/systemd/man/systemd.service.html )。
 
 除了JARFILE和APP_NAME之外，上一节中列出的设置都可以通过使用.conf文件来配置。该文件应该在jar文件的旁边，具有相同的名称，但后缀为.conf而不是.jar。例如，一个名为/var/myapp/myapp.jar的jar文件使用名为/var/myapp/myapp.conf的配置文件，如以下例子所示。
@@ -563,6 +577,7 @@ LOG_FOLDER=/custom/log/folder
 ```
 
 **温馨提示**
+
 >如果你不喜欢把配置文件放在jar文件旁边，你可以设置一个CONF_FOLDER环境变量来定制配置文件的位置。
 
 要了解如何适当地保护这个文件，请参阅[保护init.d服务的指南](https://docs.spring.io/spring-boot/docs/current/reference/html/deployment.html#deployment.installing.nix-services.init-d.securing )。
