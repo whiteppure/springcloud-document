@@ -4388,7 +4388,7 @@ public class MyBean {
 
 如果你添加了你自己的`@Bean` 类型的`SolrClient`，它将取代默认的。
 
-## 12.5. Elasticsearch
+### 12.5. Elasticsearch
 
 [Elasticsearch](https://www.elastic.co/products/elasticsearch)是一个开源、分布式、RESTful搜索和分析引擎。Spring Boot为Elasticsearch提供了基本的自动配置功能。
 
@@ -4399,7 +4399,7 @@ Spring Boot支持几个客户端。
 
 Spring Boot提供了一个专门的 "Starter"，`spring-boot-starter-data-elasticsearch`。
 
-### 12.5.1. 使用REST clients连接到Elasticsearch
+#### 12.5.1. 使用REST clients连接到Elasticsearch
 
 Elasticsearch提供了[两个不同的REST客户端](https://www.elastic.co/guide/en/elasticsearch/client/java-rest/current/index.html)，你可以用它们来查询集群："低级"客户端和 "高级"客户端。Spring Boot为 "高级" 客户端提供了支持，它与`org.elasticsearch.client:elasticsearch-rest-high-level-client`一起发布。
 
@@ -4568,6 +4568,450 @@ Spring Data包括对Cassandra的基本repository支持。目前，这比前面�
 > 关于Spring Data Cassandra的完整细节，请参考[参考文档](https://docs.spring.io/spring-data/cassandra/docs/)。
 
 ### 12.7. Couchbase
+
+[Couchbase](https://www.couchbase.com/)是一个开源的、分布式的、多模型的NoSQL面向文档的数据库，为交互式应用进行了优化。Spring Boot为Couchbase和[Spring Data Couchbase](https://github.com/spring-projects/spring-data-couchbase)提供的上面的抽象提供自动配置。有`spring-boot-starter-data-couchbase`和`spring-boot-starter-data-couchbase-reactive` "Starters"，以方便的方式收集依赖关系。
+
+#### 12.7.1. 连接到 Couchbase
+
+你可以通过添加Couchbase SDK和一些配置得到一个`Cluster`。`spring.couchbase.*`属性可以用来定制连接。一般来说，你提供[连接字符串](https://github.com/couchbaselabs/sdk-rfcs/blob/master/rfc/0011-connection-string.md)、username和password，如下例所示。
+
+```yaml
+spring:
+  couchbase:
+    connection-string: "couchbase://192.168.1.123"
+    username: "user"
+    password: "secret"
+```
+
+也可以定制一些 `ClusterEnvironment` 的设置。例如，下面的配置改变了打开一个新的 `Bucket` 所使用的超时时间，并启用了SSL支持。
+
+```yaml
+spring:
+  couchbase:
+    env:
+      timeouts:
+        connect: "3s"
+      ssl:
+        key-store: "/location/of/keystore.jks"
+        key-store-password: "secret"
+```
+
+检查`spring.couchbase.env.*`属性以了解更多细节。为了获得更多的控制权，可以使用一个或多个`ClusterEnvironmentBuilderCustomizer` Bean。
+
+#### 12.7.2. Spring Data Couchbase Repositories
+
+Spring Data包括对Couchbase的存储库支持。关于Spring Data Couchbase的完整细节，请参考[参考文档](https://docs.spring.io/spring-data/couchbase/docs/4.2.3/reference/html/)。
+
+你可以像对待其他Spring Bean一样注入一个自动配置的 `CouchbaseTemplate` 实例，前提是有一个 `CouchbaseClientFactory` Bean。这发生在如上所述的 `Cluster` 可用的情况下，并且已经指定了一个bucket的名称。
+
+```yaml
+spring:
+  data:
+    couchbase:
+      bucket-name: "my-bucket"
+```
+
+下面的例子显示了如何注入一个`CouchbaseTemplate`bean。
+
+```java
+import org.springframework.data.couchbase.core.CouchbaseTemplate;
+import org.springframework.stereotype.Component;
+
+@Component
+public class MyBean {
+
+    private final CouchbaseTemplate template;
+
+    public MyBean(CouchbaseTemplate template) {
+        this.template = template;
+    }
+
+    public String someMethod() {
+        return this.template.getBucketName();
+    }
+
+}
+```
+
+你可以在自己的配置中定义一些Bean，以覆盖自动配置所提供的Bean。
+
+* 一个`CouchbaseMappingContext` `@Bean`，名称为`couchbaseMappingContext`。
+* 一个`CustomConversions` `@Bean`，名称为`couchbaseCustomConversions`。
+* 一个`CouchbaseTemplate` `@Bean`的名字是`couchbaseTemplate`。
+
+为了避免在你自己的配置中硬编码这些名字，你可以重用Spring Data Couchbase提供的`BeanNames`。例如，你可以自定义要使用的转换器，如下所示。
+
+```java
+import org.assertj.core.util.Arrays;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.data.couchbase.config.BeanNames;
+import org.springframework.data.couchbase.core.convert.CouchbaseCustomConversions;
+
+@Configuration(proxyBeanMethods = false)
+public class MyCouchbaseConfiguration {
+
+    @Bean(BeanNames.COUCHBASE_CUSTOM_CONVERSIONS)
+    public CouchbaseCustomConversions myCustomConversions() {
+        return new CouchbaseCustomConversions(Arrays.asList(new MyConverter()));
+    }
+
+}
+```
+
+### 12.8. LDAP
+
+[LDAP](https://en.wikipedia.org/wiki/Lightweight_Directory_Access_Protocol) (Lightweight Directory Access Protocol)是一个开放的、供应商中立的、行业标准的应用协议，用于通过IP网络访问和维护分布式目录信息服务。Spring Boot为任何兼容的LDAP服务器提供自动配置，并支持[UnboundID](https://ldap.com/unboundid-ldap-sdk-for-java/)的嵌入式内存LDAP服务器。
+
+LDAP的抽象由[Spring Data LDAP](https://github.com/spring-projects/spring-data-ldap)提供。有一个`spring-boot-starter-data-ldap`的 "Starter"，可以方便地收集依赖性。
+
+#### 12.8.1. 连接到 LDAP Server
+
+要连接到LDAP服务器，确保你声明对`spring-boot-starter-data-ldap` "Starter "或`spring-ldap-core`的依赖，然后在application.properties中声明服务器的URL，如下面的例子所示。
+
+```yaml
+spring:
+  ldap:
+    urls: "ldap://myserver:1235"
+    username: "admin"
+    password: "secret"
+```
+
+如果你需要定制连接设置，你可以使用`spring.ldap.base`和`spring.ldap.base-environment`属性。
+
+`LdapContextSource`是基于这些设置自动配置的。如果`DirContextAuthenticationStrategy` Bean可用，它将与自动配置的`LdapContextSource`关联。如果你需要定制它，例如使用`PooledContextSource`，你仍然可以注入自动配置的`LdapContextSource`。确保将你定制的`ContextSource`标记为`@Primary`，以便自动配置的`LdapTemplate`使用它。
+
+#### 12.8.2. Spring Data LDAP Repositories
+
+Spring Data包括对LDAP的repository支持。关于Spring Data LDAP的完整细节，请参考[参考文档](https://docs.spring.io/spring-data/ldap/docs/1.0.x/reference/html/)。
+
+你也可以像对待其他Spring Bean一样，注入一个自动配置的`LdapTemplate`实例，如下例所示。
+
+```java
+import java.util.List;
+
+import org.springframework.ldap.core.LdapTemplate;
+import org.springframework.stereotype.Component;
+
+@Component
+public class MyBean {
+
+    private final LdapTemplate template;
+
+    public MyBean(LdapTemplate template) {
+        this.template = template;
+    }
+
+    public List<User> someMethod() {
+        return this.template.findAll(User.class);
+    }
+
+}
+```
+
+#### 12.8.3. 嵌入式内存中的LDAP服务器
+
+为测试目的，Spring Boot支持从[UnboundID](https://ldap.com/unboundid-ldap-sdk-for-java/)自动配置内存中的LDAP服务器。要配置该服务器，请添加对`com.unboundid:unboundid-ldapsdk`的依赖，并声明`spring.ldap.embedded.base-dn`属性，如下所示。
+
+```yaml
+spring:
+  ldap:
+    embedded:
+      base-dn: "dc=spring,dc=io"
+```
+
+可以定义多个base-dn值，但是，由于区分的名称通常包含逗号，所以必须使用正确的符号来定义。
+
+在yaml文件中，你可以使用yaml列表符号。在属性文件中，你必须将索引作为属性名称的一部分。
+
+```yaml
+spring.ldap.embedded.base-dn:
+  - dc=spring,dc=io
+  - dc=pivotal,dc=io
+```
+
+默认情况下，服务器在一个随机端口启动，并触发常规的LDAP支持。没有必要指定`spring.ldap.urls`属性。
+
+如果你的classpath上有一个`schema.ldif`文件，它被用来初始化服务器。如果你想从一个不同的资源加载初始化脚本，你也可以使用`spring.ldap.embedded.ldif`属性。
+
+默认情况下，一个标准的模式被用来验证`LDIF`文件。你可以通过设置`spring.ldap.embedded.validation.enabled`属性来完全关闭验证功能。如果你有自定义属性，你可以使用`spring.ldap.embedded.validation.schema`来定义你的自定义属性类型或对象类。
+
+### 12.9. InfluxDB
+
+[InfluxDB](https://www.influxdata.com/)是一个开源的时间序列数据库，为快速、高可用性地存储和检索运营监测、应用指标、物联网传感器数据和实时分析等领域的时间序列数据而优化。
+
+#### 12.9.1. Connecting to InfluxDB
+
+只要`influxdb-java`客户端在classpath上，并且设置了数据库的URL，Spring Boot就会自动配置一个`InfluxDB`实例，如下例所示。
+
+```yaml
+spring:
+  influx:
+    url: "https://172.0.0.1:8086"
+```
+
+如果与InfluxDB的连接需要用户和密码，你可以相应地设置`spring.influx.user`和`spring.influx.password`属性。
+
+InfluxDB依赖于OkHttp。如果你需要调整`InfluxDB`在幕后使用的http客户端，你可以注册一个`InfluxDbOkHttpClientBuilderProvider`bean。
+
+如果你需要对配置进行更多的控制，可以考虑注册一个`InfluxDbCustomizer`bean。
+
+## 13 缓存
+
+Spring框架提供了对透明地添加缓存到应用程序的支持。在其核心部分，该抽象将缓存应用于方法，从而根据缓存中的可用信息减少执行的次数。缓存逻辑的应用是透明的，对调用者没有任何干扰。只要通过 `@EnableCaching` 注解启用缓存支持，Spring Boot就会自动配置缓存基础设施。
+
+> 请查看Spring框架参考文献中的[相关章节](https://docs.spring.io/spring-framework/docs/5.3.9/reference/html/integration.html#cache)以了解更多细节。
+
+简而言之，为了给你的服务的某个操作添加缓存，请在其方法中添加相关的注解，如下面的例子所示。
+
+```java
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.stereotype.Component;
+
+@Component
+public class MyMathService {
+
+    @Cacheable("piDecimals")
+    public int computePiDecimal(int precision) {
+        ...
+    }
+
+}
+```
+
+这个例子演示了在一个潜在的高成本操作中使用缓存。在调用 `computeDecimal` 之前，该抽象概念在 `piDecimals` 缓存中寻找与 `i` 参数匹配的条目。如果找到一个条目，缓存中的内容将立即返回给调用者，并且不调用该方法。否则，该方法被调用，并在返回值之前更新缓存。
+
+> 你也可以透明地使用标准的JSR-107（JCache）注解（如`@CacheResult`）。然而，我们强烈建议你不要混合使用Spring Cache和JCache注解。
+
+如果你没有添加任何特定的缓存库，Spring Boot会自动配置一个[simple provider](https://docs.spring.io/spring-boot/docs/current/reference/html/features.html#features.caching.provider.simple)，在内存中concurrent map。当需要缓存时（比如前面例子中的`piDecimals`），这个提供者会为你创建缓存。简单的提供者并不推荐在生产中使用，但它对于开始使用并确保你理解这些功能是非常好的。当你决定使用哪个缓存提供程序时，请确保阅读它的文档，以弄清楚如何配置你的应用程序使用的缓存。几乎所有的提供者都要求你明确地配置你在应用程序中使用的每一个缓冲区。有些提供了一种方法来定制由`spring.cache.cache-names`属性定义的默认缓存。
+
+> 也可以透明地从缓存中[更新](https://docs.spring.io/spring-framework/docs/5.3.9/reference/html/integration.html#cache-annotations-put)或[驱逐](https://docs.spring.io/spring-framework/docs/5.3.9/reference/html/integration.html#cache-annotations-evict)数据。
+
+### 13.1. 支持的缓存
+
+缓存抽象不提供实际的存储，而是依赖于由`org.springframework.cache.Cache`和`org.springframework.cache.CacheManager`接口物化的抽象。
+
+如果你没有定义一个`CacheManager`类型的bean或一个名为`cacheResolver`的`CacheResolver`（见[`CachingConfigurer`](https://docs.spring.io/spring-framework/docs/5.3.9/javadoc-api/org/springframework/cache/annotation/CachingConfigurer.html)），Spring Boot会尝试检测以下提供者（按所示顺序）。
+
+1. [Generic](https://docs.spring.io/spring-boot/docs/current/reference/html/features.html#features.caching.provider.generic)
+2. [JCache (JSR-107)](https://docs.spring.io/spring-boot/docs/current/reference/html/features.html#features.caching.provider.jcache) (EhCache 3, Hazelcast, Infinispan, and others)
+3. [EhCache 2.x](https://docs.spring.io/spring-boot/docs/current/reference/html/features.html#features.caching.provider.ehcache2)
+4. [Hazelcast](https://docs.spring.io/spring-boot/docs/current/reference/html/features.html#features.caching.provider.hazelcast)
+5. [Infinispan](https://docs.spring.io/spring-boot/docs/current/reference/html/features.html#features.caching.provider.infinispan)
+6. [Couchbase](https://docs.spring.io/spring-boot/docs/current/reference/html/features.html#features.caching.provider.couchbase)
+7. [Redis](https://docs.spring.io/spring-boot/docs/current/reference/html/features.html#features.caching.provider.redis)
+8. [Caffeine](https://docs.spring.io/spring-boot/docs/current/reference/html/features.html#features.caching.provider.caffeine)
+9. [Simple](https://docs.spring.io/spring-boot/docs/current/reference/html/features.html#features.caching.provider.simple)
+
+> 也可以通过设置`spring.cache.type`属性来*强制*一个特定的缓存提供者。如果你需要在某些环境下（如测试）[完全禁用缓存](https://docs.spring.io/spring-boot/docs/current/reference/html/features.html#features.caching.provider.none)，请使用该属性。
+
+使用`spring-boot-starter-cache` "Starter "来快速添加基本的缓存依赖项。该启动器带来了`spring-context-support`。如果你手动添加依赖项，你必须包括`spring-context-support`才能使用JCache、EhCache 2.x或Caffeine支持。
+
+如果 `CacheManager` 是由Spring Boot自动配置的，你可以通过暴露一个实现 `CacheManagerCustomizer` 接口的bean，在它完全初始化之前进一步调整其配置。下面的例子设置了一个标志，表示 `null` 值应该被传递给底层Map。
+
+```java
+import org.springframework.boot.autoconfigure.cache.CacheManagerCustomizer;
+import org.springframework.cache.concurrent.ConcurrentMapCacheManager;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration(proxyBeanMethods = false)
+public class MyCacheManagerConfiguration {
+
+    @Bean
+    public CacheManagerCustomizer<ConcurrentMapCacheManager> cacheManagerCustomizer() {
+        return (cacheManager) -> cacheManager.setAllowNullValues(false);
+    }
+
+}
+```
+
+> 在前面的例子中，预计会有一个自动配置的`ConcurrentMapCacheManager`。如果不是这样（要么是你提供了自己的配置，要么是自动配置了不同的缓存提供者），定制器根本就不会被调用。你可以有任意多的自定义器，你也可以通过使用`@Order`或`Ordered`对它们进行排序。
+
+#### 13.1.1. 通用的
+
+如果上下文至少定义了一个`org.springframework.cache.Cache` bean，就会使用通用缓存。一个包裹所有该类型的Bean的`CacheManager`被创建。
+
+#### 13.1.2. JCache (JSR-107)
+
+[JCache](https://jcp.org/en/jsr/detail?id=107)通过classpath上存在的`javax.cache.spi.CachingProvider`进行引导（也就是说，classpath上存在一个符合JSR-107的缓存库），`JCacheCacheManager`由`spring-boot-starter-cache` "Starter "提供。有各种兼容的库，Spring Boot为Ehcache 3、Hazelcast和Infinispan提供依赖性管理。也可以添加任何其他兼容的库。
+
+可能会出现不止一个提供者的情况，在这种情况下，必须明确指定提供者。即使JSR-107标准没有强制要求以标准化的方式定义配置文件的位置，Spring Boot也会尽力适应设置缓存的实现细节，如下面的例子所示。
+
+```yaml
+# Only necessary if more than one provider is present
+spring:
+  cache:
+    jcache:
+      provider: "com.example.MyCachingProvider"
+      config: "classpath:example.xml"
+```
+
+当一个缓存库同时提供本地实现和JSR-107支持时，Spring Boot更倾向于JSR-107支持，这样，如果你切换到不同的JSR-107实现，同样的功能也可以使用。
+
+> Spring Boot有[对Hazelcast的一般支持](https://docs.spring.io/spring-boot/docs/current/reference/html/features.html#features.hazelcast)。如果有一个`HazelcastInstance`，它也会自动被`CacheManager`重用，除非指定`spring.cache.jcache.config`属性。
+
+有两种方法来定制底层的`javax.cache.cacheManager`。
+
+* 通过设置`spring.cache.cache-names`属性，可以在启动时创建缓存。如果定义了一个自定义的`javax.cache.configuration.Configuration` Bean，就可以用来定制它们。
+* `org.springframework.boot.autoconfigure.cache.JCacheManagerCustomizer` Bean 被调用，并引用了`CacheManager`的引用，以实现完全定制。
+
+如果定义了一个标准的`javax.cache.CacheManager` Bean，它将被自动包装在抽象所期望的`org.springframework.cache.CacheManager`实现中。没有进一步的定制应用于它。
+
+#### 13.1.3. EhCache 2.x
+
+[EhCache](https://www.ehcache.org/) 2.x被使用，如果在classpath的根部能找到一个名为`ehcache.xml`的文件。如果找到EhCache 2.x，则使用`spring-boot-starter-cache` "Starter "提供的`EhCacheCacheManager`来引导 cache manager。也可以提供一个备用的配置文件，如下面的例子所示。
+
+```yaml
+spring:
+  cache:
+    ehcache:
+      config: "classpath:config/another-config.xml"
+```
+
+#### 13.1.4. Hazelcast
+
+Spring Boot有[对Hazelcast的一般支持](https://docs.spring.io/spring-boot/docs/current/reference/html/features.html#features.hazelcast)。如果一个 `HazelcastInstance` 被自动配置了，它就会被自动包装成一个 `CacheManager`。
+
+#### 13.1.5. Infinispan
+
+[Infinispan](https://infinispan.org/)没有默认的配置文件位置，所以必须明确地指定它。否则，将使用默认的引导文件。
+
+```yaml
+spring:
+  cache:
+    infinispan:
+      config: "infinispan.xml"
+```
+
+缓存可以通过设置 `spring.cache.cache-names` 属性在启动时创建。如果定义了一个自定义的`ConfigurationBuilder`bean，它将被用来定制缓存。
+
+> Spring Boot中对Infinispan的支持仅限于嵌入式模式，而且是相当基本的。如果你想要更多的选项，你应该使用官方的Infinispan Spring Boot启动器来代替。更多细节请参见[Infinispan的文档](https://github.com/infinispan/infinispan-spring-boot)。
+
+#### 13.1.6. Couchbase
+
+如果Spring Data Couchbase可用并且Couchbase被[配置](https://docs.spring.io/spring-boot/docs/current/reference/html/features.html#features.nosql.couchbase)，则会自动配置一个`CouchbaseCacheManager`。通过设置`spring.cache.cache-names`属性可以在启动时创建额外的缓存，并且可以通过使用`spring.cache.couchbase.*`属性配置缓存默认值。例如，下面的配置创建了`cache1`和`cache2`缓存，条目*有效期*为10分钟。
+
+```yaml
+spring:
+  cache:
+    cache-names: "cache1,cache2"
+    couchbase:
+      expiration: "10m"
+```
+
+如果你需要对配置进行更多的控制，可以考虑注册一个`CouchbaseCacheManagerBuilderCustomizer` Bean。下面的例子显示了一个自定义器，它为`cache1`和`cache2`配置了一个特定的条目到期时间。
+
+```java
+import java.time.Duration;
+
+import org.springframework.boot.autoconfigure.cache.CouchbaseCacheManagerBuilderCustomizer;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.data.couchbase.cache.CouchbaseCacheConfiguration;
+
+@Configuration(proxyBeanMethods = false)
+public class MyCouchbaseCacheManagerConfiguration {
+
+    @Bean
+    public CouchbaseCacheManagerBuilderCustomizer myCouchbaseCacheManagerBuilderCustomizer() {
+        return (builder) -> builder
+                .withCacheConfiguration("cache1", CouchbaseCacheConfiguration
+                        .defaultCacheConfig().entryExpiry(Duration.ofSeconds(10)))
+                .withCacheConfiguration("cache2", CouchbaseCacheConfiguration
+                        .defaultCacheConfig().entryExpiry(Duration.ofMinutes(1)));
+
+    }
+
+}
+```
+
+#### 13.1.7. Redis
+
+如果[Redis](https://redis.io/)可用且已配置，则会自动配置一个`RedisCacheManager`。可以通过设置`spring.cache.cache-names`属性在启动时创建额外的缓存，缓存默认值可以通过使用`spring.cache.redis.*`属性来配置。例如，下面的配置创建了`cache1`和`cache2`缓存，*生存时间*为10分钟。
+
+```yaml
+spring:
+  cache:
+    cache-names: "cache1,cache2"
+    redis:
+      time-to-live: "10m"
+```
+
+默认情况下，会添加一个键的前缀，这样，如果两个独立的缓存使用同一个键，Redis就不会有重叠的键，也不能返回无效的值。如果你创建了自己的 `RedisCacheManager`，我们强烈建议保持这个设置。
+
+> 你可以通过添加你自己的`RedisCacheConfiguration` `@Bean`来完全控制默认配置。如果你想定制默认的序列化策略，这很有用。
+
+如果你需要对配置进行更多的控制，可以考虑注册一个`RedisCacheManagerBuilderCustomizer`bean。下面的例子显示了一个自定义器，它为`cache1`和`cache2`配置了一个特定的生存时间。
+
+```java
+import java.time.Duration;
+
+import org.springframework.boot.autoconfigure.cache.RedisCacheManagerBuilderCustomizer;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.data.redis.cache.RedisCacheConfiguration;
+
+@Configuration(proxyBeanMethods = false)
+public class MyRedisCacheManagerConfiguration {
+
+    @Bean
+    public RedisCacheManagerBuilderCustomizer myRedisCacheManagerBuilderCustomizer() {
+        return (builder) -> builder
+                .withCacheConfiguration("cache1", RedisCacheConfiguration
+                        .defaultCacheConfig().entryTtl(Duration.ofSeconds(10)))
+                .withCacheConfiguration("cache2", RedisCacheConfiguration
+                        .defaultCacheConfig().entryTtl(Duration.ofMinutes(1)));
+
+    }
+
+}
+```
+
+#### 13.1.8. Caffeine
+
+[Caffeine](https://github.com/ben-manes/caffeine)是Java 8对Guava缓存的重写，取代了对Guava的支持。如果Caffeine存在，一个`CaffeineCacheManager`（由`spring-boot-starter-cache` "Starter "提供）会自动配置。缓存可以通过设置`spring.cache.cache-names`属性在启动时创建，并可以通过以下方式之一进行定制（按指定顺序）。
+
+1. 一个由`spring.cache.caffeine.spec`定义的缓存规范。
+2. 定义了一个`com.github.benmanes.caffeine.cache.CaffeineSpec` Beam
+3. 定义了一个`com.github.benmanes.caffeine.cache.Caffeine` Bean
+
+例如，以下配置创建了 `cache1` 和 `cache2` 缓存，最大容量为500，*生存时间*为10分钟
+
+```yaml
+spring:
+  cache:
+    cache-names: "cache1,cache2"
+    caffeine:
+      spec: "maximumSize=500,expireAfterAccess=600s"
+```
+
+如果定义了一个`com.github.benmanes.caffeine.cache.CacheLoader` Bean，它将自动与`CaffeineCacheManager`相关联。由于 `CacheLoader` 将与缓存管理器管理的所有缓存相关联，它必须被定义为 `CacheLoader<Object, Object>`。自动配置会忽略任何其他的通用类型。
+
+#### 13.1.9. 简单的实现
+
+如果找不到其他的提供者，就配置一个简单的实现，使用`ConcurrentHashMap`作为缓存存储。如果你的应用程序中没有缓存库，这就是默认的。默认情况下，缓存是根据需要创建的，但你可以通过设置`cache-names`属性来限制可用的缓存列表。例如，如果你只想要`cache1`和`cache2`缓存，设置`cache-names`属性如下。
+
+```yaml
+spring:
+  cache:
+    cache-names: "cache1,cache2"
+```
+
+如果你这样做了，而你的应用程序使用了一个没有列出的缓存，那么在运行时需要缓存时就会失败，但在启动时不会。这与 "真正的" 缓存提供者在你使用未声明的缓存时的行为类似。
+
+#### 13.1.10. None
+
+当`@EnableCaching` 出现在你的配置中时，预计也会有一个合适的缓存配置。如果你需要在某些环境中完全禁用缓存，请将缓存类型强制为`none`，以使用一个无操作的实现，如下例所示。
+
+```yaml
+spring:
+  cache:
+    type: "none"
+```
+
+### 14. Messaging
 
 TODO
 
