@@ -3714,6 +3714,861 @@ spring:
 
 ### 11.3. JPA 和 Spring Data JPA
 
+Java Persistence API是一项标准技术，它可以让你把对象 "映射" 到关系型数据库。`spring-boot-starter-data-jpa` POM提供了一个快速入门的方法。它提供了以下关键的依赖性。
+
+* Hibernate：最流行的JPA实现之一。
+* Spring Data JPA：帮助你实现基于JPA的Repository。
+* Spring ORM：来自Spring框架的核心ORM支持。
+
+> 我们在这里不谈JPA或[Spring Data](https://spring.io/projects/spring-data)的太多细节。你可以按照[spring.io](https://spring.io/)的[用JPA访问数据](https://spring.io/guides/gs/accessing-data-jpa/)指南，并阅读[Spring Data JPA](https://spring.io/projects/spring-data-jpa)和[Hibernate](https://hibernate.org/orm/documentation/)参考文档。
+
+#### 11.3.1. Entity 类
+
+传统上，JPA "Entity" 类是在`persistence.xml`文件中指定的。在Spring Boot中，这个文件是不必要的，而是使用 "Entity Scanning"。默认情况下，你的主配置类（用`@EnableAutoConfiguration`或`@SpringBootApplication`注释的那个）下面的所有包都会被搜索到。
+
+任何带有`@Entity`、`@Embeddable`或`@MappedSuperclass`注释的类都会被考虑。一个典型的实体类类似于下面的例子。
+
+```java
+import java.io.Serializable;
+
+import javax.persistence.Column;
+import javax.persistence.Entity;
+import javax.persistence.GeneratedValue;
+import javax.persistence.Id;
+
+@Entity
+public class City implements Serializable {
+
+    @Id
+    @GeneratedValue
+    private Long id;
+
+    @Column(nullable = false)
+    private String name;
+
+    @Column(nullable = false)
+    private String state;
+
+    // ... additional members, often include @OneToMany mappings
+
+    protected City() {
+        // no-args constructor required by JPA spec
+        // this one is protected since it shouldn't be used directly
+    }
+
+    public City(String name, String state) {
+        this.name = name;
+        this.state = state;
+    }
+
+    public String getName() {
+        return this.name;
+    }
+
+    public String getState() {
+        return this.state;
+    }
+
+    // ... etc
+
+}
+```
+
+> 你可以通过使用`@EntityScan`注解来定制实体扫描位置。参见[howto.html](https://docs.spring.io/spring-boot/docs/current/reference/html/howto.html#howto.data-access.separate-entity-definitions-from-spring-configuration)的操作指南。
+
+#### 11.3.2. Spring Data JPA Repositories
+
+[Spring Data JPA](https://spring.io/projects/spring-data-jpa) repositories 是你可以定义的接口，用于访问数据。JPA查询是由你的方法名称自动创建的。例如，一个`CityRepository` 可能会声明一个 `findAllByState(String state)`方法，以查找某个州的所有城市。
+
+对于更复杂的查询，你可以用Spring Data的[`Query`](https://docs.spring.io/spring-data/jpa/docs/2.5.3/api/org/springframework/data/jpa/repository/Query.html)注解来注释你的方法。
+
+Spring Data Repositories 通常从[`Repository`](https://docs.spring.io/spring-data/commons/docs/2.5.3/api/org/springframework/data/repository/Repository.html)或[`CrudRepository`](https://docs.spring.io/spring-data/commons/docs/2.5.3/api/org/springframework/data/repository/CrudRepository.html)接口延伸。如果你使用自动配置，存储库会从包含你的主配置类（用`@EnableAutoConfiguration`或`@SpringBootApplication`注解的那个）向下搜索。
+
+下面的例子显示了一个典型的Spring Data资源库接口定义。
+
+```java
+import org.springframework.boot.docs.features.sql.jpaandspringdata.entityclasses.City;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.repository.Repository;
+
+public interface CityRepository extends Repository<City, Long> {
+
+    Page<City> findAll(Pageable pageable);
+
+    City findByNameAndStateAllIgnoringCase(String name, String state);
+
+}
+```
+
+Spring Data JPA存储库支持三种不同的引导模式：default, deferred 和 lazy。要启用deferred或lazy引导，请将`spring.data.jpa.repositories.bootstrap-mode`属性分别设置为`deferred`或`lazy`。当使用deferred或lazy引导时，自动配置的`EntityManagerFactoryBuilder`将使用上下文的`AsyncTaskExecutor`，如果有的话，作为引导执行器。如果存在多个，将使用名为 `applicationTaskExecutor` 的那个。
+
+> 当使用deferred或lazy引导时，确保在应用上下文引导阶段后推迟对JPA基础设施的任何访问。你可以使用`SmartInitializingSingleton`来调用任何需要JPA基础设施的初始化。对于作为Spring Bean创建的JPA组件（如转换器），使用`ObjectProvider`来延迟解决依赖关系（如果有）。
+
+这一节的内容对于Spring Data JPA来说，入门都不算。关于完整的细节，请参阅[Spring Data JPA参考文档](https://docs.spring.io/spring-data/jpa/docs/2.5.3/reference/html)。
+
+#### 11.3.3. 创建和删除JPA数据库
+
+默认情况下，JPA数据库**只在**你使用嵌入式数据库（H2、HSQL或Derby）时自动创建。你可以通过使用`spring.jpa.*`属性明确地配置JPA设置。例如，为了创建和删除表，你可以在你的`application.properties`中添加以下一行。
+
+```yaml
+spring:
+  jpa:
+    hibernate.ddl-auto: "create-drop"
+```
+
+> Hibernate自己的内部属性名称（如果你碰巧记得比较清楚）是`hibernate.hbm2ddl.auto`。你可以通过使用`spring.jpa.properties.*`来设置它，以及其他Hibernate的本地属性（在将它们添加到实体管理器之前，前缀被剥离）。下面一行显示了一个为Hibernate设置JPA属性的例子。
+
+```yaml
+spring:
+  jpa:
+    properties:
+      hibernate:
+        "globally_quoted_identifiers": "true"
+```
+
+前面例子中的一行将`hibernate.global_quoted_identifiers`属性的值`true`传递给Hibernate实体管理器。
+
+默认情况下，DDL的执行（或验证）会推迟到`ApplicationContext`启动之后。还有一个`spring.jpa.generate-ddl`标志，但如果Hibernate自动配置处于激活状态，它就不会被使用，因为`ddl-auto`的设置更加细化。
+
+#### 11.3.4 在View中打开EntityManager
+
+如果你正在运行一个Web应用程序，Spring Boot默认注册了[`OpenEntityManagerInViewInterceptor`](https://docs.spring.io/spring-framework/docs/5.3.9/javadoc-api/org/springframework/orm/jpa/support/OpenEntityManagerInViewInterceptor.html)来应用 "Open EntityManager in View "模式，以允许在Web视图中进行延迟加载。如果你不想要这种行为，你应该在你的`application.properties`中把`spring.jpa.open-in-view`设置为`false`。
+
+### 11.4. Spring Data JDBC
+
+Spring Data包括对JDBC的repository支持，并将为`CrudRepository`上的方法自动生成SQL。对于更高级的查询，提供了一个`@Query`注解。
+
+当必要的依赖在classpath上时，Spring Boot将自动配置Spring Data的JDBC资源库。它们可以通过对`spring-boot-starter-data-jdbc`的单一依赖性添加到你的项目中。如果有必要，你可以通过添加`@EnableJdbcRepositories`注解或`JdbcConfiguration`子类到你的应用程序来控制Spring Data JDBC的配置。
+
+> 关于Spring Data JDBC的完整细节，请参考[参考文档](https://docs.spring.io/spring-data/jdbc/docs/2.2.3/reference/html/)。
+
+### 11.5. 使用H2的Web Console
+
+[H2数据库](https://www.h2database.com/)提供了一个[基于浏览器的控制台](https://www.h2database.com/html/quickstart.html#h2_console)，Spring Boot可以为你自动配置。当满足以下条件时，该控制台会被自动配置。
+
+* 你正在开发一个基于Servlet的Web应用程序。
+* `com.h2database:h2`位于classpath上。
+* 你正在使用[Spring Boot的开发者工具](https://docs.spring.io/spring-boot/docs/current/reference/html/using.html#using.devtools)。
+
+如果你不使用Spring Boot的开发者工具，但仍想利用H2的控制台，你可以配置`spring.h2.console.enabled`属性，值为`true`。
+
+H2控制台只在开发过程中使用，所以你应该注意确保`spring.h2.console.enabled`在生产环境中不被设置为`true`。
+
+#### 11.5.1. 改变H2控制台的路径
+
+默认情况下，控制台的位置是`/h2-console`。你可以通过使用`spring.h2.console.path`属性来定制控制台的路径。
+
+### 11.6. 使用 jOOQ
+
+jOOQ面向对象查询（[jOOQ](https://www.jooq.org/)）是[Data Geekery](https://www.datageekery.com/)的一个流行产品，它从你的数据库中生成Java代码，让你通过其流畅的API建立类型安全的SQL查询。商业版和开源版都可以与Spring Boot一起使用。
+
+#### 11.6.1. 代码生成
+
+为了使用jOOQ类型安全的查询，你需要从你的数据库模式中生成Java类。你可以按照[jOOQ用户手册](https://www.jooq.org/doc/3.14.13/manual-single-page/#jooq-in-7-steps-step3)中的说明进行操作。如果你使用`jooq-codegen-maven`插件，同时使用`spring-boot-starter-parent`"parent POM"，你可以安全地省略该插件的`<version>`标签。你也可以使用Spring Boot定义的版本变量（如`h2.version`）来声明该插件的数据库依赖性。下面的列表显示了一个例子。
+
+```xml
+<plugin>
+    <groupId>org.jooq</groupId>
+    <artifactId>jooq-codegen-maven</artifactId>
+    <executions>
+        ...
+    </executions>
+    <dependencies>
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <version>${h2.version}</version>
+        </dependency>
+    </dependencies>
+    <configuration>
+        <jdbc>
+            <driver>org.h2.Driver</driver>
+            <url>jdbc:h2:~/yourdatabase</url>
+        </jdbc>
+        <generator>
+            ...
+        </generator>
+    </configuration>
+</plugin>
+```
+
+#### 11.6.2. 使用 DSLContext
+
+jOOQ提供的流畅的API是通过`org.jooq.DSLContext`接口启动的。Spring Boot将`DSLContext`自动配置为Spring Bean，并将其连接到你的应用程序`DataSource`。要使用`DSLContext`，你可以注入它，如下面的例子所示。
+
+```java
+import java.util.GregorianCalendar;
+import java.util.List;
+
+import org.jooq.DSLContext;
+
+import org.springframework.stereotype.Component;
+
+import static org.springframework.boot.docs.features.sql.jooq.dslcontext.Tables.AUTHOR;
+
+@Component
+public class MyBean {
+
+    private final DSLContext create;
+
+    public MyBean(DSLContext dslContext) {
+        this.create = dslContext;
+    }
+
+
+}
+```
+
+jOOQ手册倾向于使用一个名为`create`的变量来保存`DSLContext`。
+
+然后你可以使用`DSLContext`来构建你的查询，如以下例子所示。
+
+```java
+public List<GregorianCalendar> authorsBornAfter1980() {
+    return this.create.selectFrom(AUTHOR)
+            .where(AUTHOR.DATE_OF_BIRTH.greaterThan(new GregorianCalendar(1980, 0, 1)))
+            .fetch(AUTHOR.DATE_OF_BIRTH);
+```
+
+#### 11.6.3. jOOQ SQL方言
+
+除非配置了`spring.jooq.sql-dialect`属性，否则Spring Boot会决定为你的数据源使用哪种SQL方言。如果Spring Boot无法检测到方言，它就会使用`DEFAULT`。
+
+> Spring Boot只能自动配置jOOQ开源版本所支持的方言。
+
+#### 11.6.4. 自定义 jOOQ
+
+更高级的定制可以通过定义你自己的`DefaultConfigurationCustomizer`bean来实现，它将在创建`org.jooq.Configuration` `@Bean`之前被调用。这优先于任何由自动配置应用的东西。
+
+如果你想完全控制jOOQ的配置，你也可以创建你自己的`org.jooq.Configuration` `@Bean`。
+
+### 11.7. 使用 R2DBC
+
+响应式关系型数据库连接（[R2DBC](https://r2dbc.io/)）项目为关系型数据库带来了响应式编程API。R2DBC的`io.r2dbc.spi.Connection`提供了一种处理非阻塞数据库连接的标准方法。连接是通过`ConnectionFactory`提供的，类似于jdbc的`DataSource`。
+
+`ConnectionFactory`的配置由`spring.r2dbc.*`的外部配置属性控制。例如，你可以在`application.properties`中声明以下部分。
+
+```yaml
+spring:
+  r2dbc:
+    url: "r2dbc:postgresql://localhost/test"
+    username: "dbuser"
+    password: "dbpass"
+```
+
+你不需要指定驱动类名称，因为Spring Boot从R2DBC的Connection Factory discovery中获取驱动。
+
+至少应该提供URL。在URL中指定的信息优先于单个属性，即 `name` , `username` , `password` 和池选项。
+
+> "How-to" 部分包括一个[关于如何初始化数据库的部分](https://docs.spring.io/spring-boot/docs/current/reference/html/howto.html#howto.data-initialization.using-basic-sql-scripts)。
+
+要定制由 `ConnectionFactory` 创建的连接，即设置你不想（或不能）在中央数据库配置中配置的特定参数，你可以使用 `ConnectionFactoryOptionsBuilderCustomizer` `@Bean`。下面的例子显示了如何手动覆盖数据库端口，而其余的选项则来自应用程序的配置。
+
+```java
+import io.r2dbc.spi.ConnectionFactoryOptions;
+
+import org.springframework.boot.autoconfigure.r2dbc.ConnectionFactoryOptionsBuilderCustomizer;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration(proxyBeanMethods = false)
+public class MyR2dbcConfiguration {
+
+    @Bean
+    public ConnectionFactoryOptionsBuilderCustomizer connectionFactoryPortCustomizer() {
+        return (builder) -> builder.option(ConnectionFactoryOptions.PORT, 5432);
+    }
+
+}
+```
+
+下面的例子显示了如何设置一些PostgreSQL的连接选项。
+
+```java
+import java.util.HashMap;
+import java.util.Map;
+
+import io.r2dbc.postgresql.PostgresqlConnectionFactoryProvider;
+
+import org.springframework.boot.autoconfigure.r2dbc.ConnectionFactoryOptionsBuilderCustomizer;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration(proxyBeanMethods = false)
+public class MyPostgresR2dbcConfiguration {
+
+    @Bean
+    public ConnectionFactoryOptionsBuilderCustomizer postgresCustomizer() {
+        Map<String, String> options = new HashMap<>();
+        options.put("lock_timeout", "30s");
+        options.put("statement_timeout", "60s");
+        return (builder) -> builder.option(PostgresqlConnectionFactoryProvider.OPTIONS, options);
+    }
+
+}
+```
+
+当一个`ConnectionFactory`bean可用时，常规的JDBC`DataSource`自动配置就会退缩。如果你想保留JDBC的`DataSource`自动配置，并能接受在响应式应用程序中使用阻塞的JDBC API的风险，在你的应用程序中的`@Configuration`类上添加`@Import(DataSourceAutoConfiguration.class)`来重新启用它。
+
+#### 11.7.1. 嵌入式数据库支持
+
+与[JDBC支持](https://docs.spring.io/spring-boot/docs/current/reference/html/features.html#features.sql.datasource.embedded)类似，Spring Boot可以自动配置嵌入式数据库以实现响应式使用。你不需要提供任何连接URL。你只需要包括一个你想使用的嵌入式数据库的构建依赖，如下面的例子所示。
+
+```xml
+<dependency>
+    <groupId>io.r2dbc</groupId>
+    <artifactId>r2dbc-h2</artifactId>
+    <scope>runtime</scope>
+</dependency>
+```
+
+> 如果你在测试中使用这个功能，你可能会注意到，无论你使用多少个应用程序上下文，整个测试套件都在重复使用同一个数据库。如果你想确保每个上下文都有一个独立的嵌入式数据库，你应该把`spring.r2dbc.generate-unique-name`设置为`true`。
+
+#### 11.7.2. 使用DatabaseClient
+
+一个`DatabaseClient`bean是自动配置的，你可以`@Autowire`它直接进入你自己的bean，如下面的例子所示。
+
+```java
+import java.util.Map;
+
+import reactor.core.publisher.Flux;
+
+import org.springframework.r2dbc.core.DatabaseClient;
+import org.springframework.stereotype.Component;
+
+@Component
+public class MyBean {
+
+    private final DatabaseClient databaseClient;
+
+    public MyBean(DatabaseClient databaseClient) {
+        this.databaseClient = databaseClient;
+    }
+
+    public Flux<Map<String, Object>> someMethod() {
+        return this.databaseClient.sql("select * from user").fetch().all();
+    }
+
+}
+```
+
+#### 11.7.3. Spring Data R2DBC Repositories
+
+[Spring Data R2DBC](https://spring.io/projects/spring-data-r2dbc)repositories 是你可以定义访问数据的接口。查询是由你的方法名称自动创建的。例如，一个`CityRepository` 接口可能会声明一个`findAllByState(String state)`方法，以找到一个给定州的所有城市。
+
+对于更复杂的查询，你可以用Spring Data的[`Query`](https://docs.spring.io/spring-data/r2dbc/docs/1.3.3/api/org/springframework/data/r2dbc/repository/Query.html)注解来注释你的方法。
+
+Spring Data资源库通常从[`Repository`](https://docs.spring.io/spring-data/commons/docs/2.5.3/api/org/springframework/data/repository/Repository.html)或[`CrudRepository`](https://docs.spring.io/spring-data/commons/docs/2.5.3/api/org/springframework/data/repository/CrudRepository.html)接口延伸。如果你使用自动配置，存储库会从包含你的主配置类（用`@EnableAutoConfiguration`或`@SpringBootApplication`注解的那个）向下搜索。
+
+下面的例子显示了一个典型的Spring Data资源库接口定义。
+
+```java
+import reactor.core.publisher.Mono;
+
+import org.springframework.data.repository.Repository;
+
+public interface CityRepository extends Repository<City, Long> {
+
+    Mono<City> findByNameAndStateAllIgnoringCase(String name, String state);
+
+}
+```
+
+> 这一节内容连Spring Data R2DBC入门都不算。有关完整的细节，请参阅[Spring Data R2DBC参考文档](https://docs.spring.io/spring-data/r2dbc/docs/1.3.3/reference/html/)。
+
+## 12. 使用NOSQL技术
+
+Spring Data提供了额外的项目，帮助你访问各种NoSQL技术，包括。
+
+* [MongoDB](https://spring.io/projects/spring-data-mongodb)
+* [Neo4J](https://spring.io/projects/spring-data-neo4j)
+* [Elasticsearch](https://spring.io/projects/spring-data-elasticsearch)
+* [Redis](https://spring.io/projects/spring-data-redis)
+* [GemFire](https://spring.io/projects/spring-data-gemfire) or [Geode](https://spring.io/projects/spring-data-geode)
+* [Cassandra](https://spring.io/projects/spring-data-cassandra)
+* [Couchbase](https://spring.io/projects/spring-data-couchbase)
+* [LDAP](https://spring.io/projects/spring-data-ldap)
+
+Spring Boot为Redis、MongoDB、Neo4j、Solr、Elasticsearch、Cassandra、Couchbase、LDAP和InfluxDB提供自动配置。你可以利用其他项目，但你必须自己配置它们。请参考[spring.io/projects/spring-data](https://spring.io/projects/spring-data)上的相应参考文档。
+
+### 12.1. Redis
+
+[Redis](https://redis.io/)是一个高速缓存、消息代理和功能丰富的键值存储。Spring Boot为[Lettuce](https://github.com/lettuce-io/lettuce-core/)和[Jedis](https://github.com/xetorthio/jedis/)客户端库以及[Spring Data Redis](https://github.com/spring-projects/spring-data-redis)提供了基本自动配置。
+
+有一个`spring-boot-starter-data-redis`的 "Starter"，用于以方便的方式收集依赖关系。默认情况下，它使用[Lettuce](https://github.com/lettuce-io/lettuce-core/)。该启动器可以处理传统的和响应式的应用程序。
+
+> 我们还提供了一个`spring-boot-starter-data-redis-reactive`的 "Starter"，以便与其他支持reactive的stores保持一致。
+
+#### 12.1.1. 连接到Redis
+
+你可以像其他Spring Bean一样，注入一个自动配置的`RedisConnectionFactory`、`StringRedisTemplate`或vanilla`RedisTemplate`实例。默认情况下，该实例会尝试连接到`localhost:6379`的Redis服务器。下面的列表显示了这样一个bean的例子。
+
+```java
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.stereotype.Component;
+
+@Component
+public class MyBean {
+
+    private final StringRedisTemplate template;
+
+    public MyBean(StringRedisTemplate template) {
+        this.template = template;
+    }
+
+    public Boolean someMethod() {
+        return this.template.hasKey("spring");
+    }
+
+}
+```
+
+> 你也可以注册任意数量的实现`LettuceClientConfigurationBuilderCustomizer`的bean，以进行更高级的定制。如果你使用Jedis，`JedisClientConfigurationBuilderCustomizer`也可用。
+
+如果你添加你自己的任何自动配置类型的`@Bean`，它将取代默认的类型（除了在`RedisTemplate`的情况下，当排除是基于Bean的名字`redisTemplate`，而不是它的类型）。
+
+如果`commons-pool2`在classpath上，并且至少有一个[`RedisProperties`](https://github.com/spring-projects/spring-boot/tree/v2.5.3/spring-boot-project/spring-boot-autoconfigure/src/main/java/org/springframework/boot/autoconfigure/data/redis/RedisProperties.java)的`Pool`选项被设置，那么池式连接工厂将被自动配置。
+
+### 12.2. MongoDB
+
+[MongoDB](https://www.mongodb.com/)是一个开源的NoSQL文档数据库，使用类似JSON的模式，而不是传统的基于表格的关系数据。Spring Boot为与MongoDB合作提供了一些便利，包括`spring-boot-starter-data-mongodb`和`spring-boot-starter-data-mongodb-reactive` "Starters"。
+
+#### 12.2.1. 连接到 MongoDB Database
+
+为了访问MongoDB数据库，你可以注入一个自动配置的`org.springframework.data.mongodb.MongoDatabaseFactory`。默认情况下，该实例会尝试连接到位于`mongodb://localhost/test`的MongoDB服务器。下面的例子展示了如何连接到MongoDB数据库。
+
+```java
+import com.mongodb.client.MongoCollection;
+import com.mongodb.client.MongoDatabase;
+import org.bson.Document;
+
+import org.springframework.data.mongodb.MongoDatabaseFactory;
+import org.springframework.stereotype.Component;
+
+@Component
+public class MyBean {
+
+    private final MongoDatabaseFactory mongo;
+
+    public MyBean(MongoDatabaseFactory mongo) {
+        this.mongo = mongo;
+    }
+
+    public MongoCollection<Document> someMethod() {
+        MongoDatabase db = this.mongo.getMongoDatabase();
+        return db.getCollection("users");
+    }
+
+}
+```
+
+如果你已经定义了自己的 `MongoClient`，它将被用来自动配置一个合适的 `MongoDatabaseFactory`。
+
+自动配置的`MongoClient`是使用`MongoClientSettings`bean创建的。如果你已经定义了你自己的`MongoClientSettings`，它将被使用而不需要修改，`spring.data.mongodb`属性将被忽略。否则，`MongoClientSettings`将被自动配置，并将有`spring.data.mongodb`属性应用到它。在这两种情况下，你可以声明一个或多个`MongoClientSettingsBuilderCustomizer` bean 来微调`MongoClientSettings`的配置。每一个都将与用于构建`MongoClientSettings`的`MongoClientSettings.Builder`依次被调用。
+
+你可以设置`spring.data.mongodb.uri`属性来改变URL，并配置额外的设置，如*replica set*，如以下例子所示。
+
+```yaml
+spring:
+  data:
+    mongodb:
+      uri: "mongodb://user:secret@mongo1.example.com:12345,mongo2.example.com:23456/test"
+```
+
+另外，你也可以使用分离的属性来指定连接细节。例如，你可以在你的`application.properties`中声明以下设置。
+
+```yaml
+spring:
+  data:
+    mongodb:
+      host: "mongoserver.example.com"
+      port: 27017
+      database: "test"
+      username: "user"
+      password: "secret"
+```
+
+如果没有指定`spring.data.mongodb.port`，将使用默认的`27017`。你可以从前面的例子中删除这一行。
+
+如果你不使用Spring Data MongoDB，你可以注入一个`MongoClient`bean，而不是使用`MongoDatabaseFactory`。如果你想完全控制建立MongoDB连接，你也可以声明你自己的`MongoDatabaseFactory`或`MongoClient`bean。
+
+> 如果你使用的是响应式驱动，SSL需要Netty。如果使用Netty，自动配置会自动配置这个工厂。
+
+#### 12.2.2. MongoTemplate
+
+[Spring Data MongoDB](https://spring.io/projects/spring-data-mongodb)提供了一个[`MongoTemplate`](https://docs.spring.io/spring-data/mongodb/docs/3.2.3/api/org/springframework/data/mongodb/core/MongoTemplate.html)类，其设计与Spring的`JdbcTemplate`非常相似。与`JdbcTemplate`一样，Spring Boot为你自动配置了一个Bean来注入模板，如下所示。
+
+```java
+import com.mongodb.client.MongoCollection;
+import org.bson.Document;
+
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.stereotype.Component;
+
+@Component
+public class MyBean {
+
+    private final MongoTemplate mongoTemplate;
+
+    public MyBean(MongoTemplate mongoTemplate) {
+        this.mongoTemplate = mongoTemplate;
+    }
+
+    public MongoCollection<Document> someMethod() {
+        return this.mongoTemplate.getCollection("users");
+    }
+
+}
+```
+
+完整的细节见[`MongoOperations` Javadoc](https://docs.spring.io/spring-data/mongodb/docs/3.2.3/api/org/springframework/data/mongodb/core/MongoOperations.html)。
+
+#### 12.2.3. Spring Data MongoDB Repositories
+
+Spring Data包括对MongoDB的repository 支持。与前面讨论的JPA repositories 一样，其基本原则是根据方法名称自动构建查询。
+
+事实上，Spring Data JPA和Spring Data MongoDB都共享相同的公共基础设施。你可以采用前面的JPA例子，假设`City`现在是MongoDB的数据类，而不是JPA的`@Entity`，那么它的工作方式是一样的，如下例所示。
+
+```java
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.repository.Repository;
+
+public interface CityRepository extends Repository<City, Long> {
+
+    Page<City> findAll(Pageable pageable);
+
+    City findByNameAndStateAllIgnoringCase(String name, String state);
+
+}
+```
+
+你可以通过使用`@EntityScan`注释来定制document扫描位置。
+
+> 关于Spring Data MongoDB的完整细节，包括其丰富的对象映射技术，请参考其[参考文档](https://spring.io/projects/spring-data-mongodb)。
+
+#### 12.2.4. 嵌入式Mongo
+
+Spring Boot为[嵌入式Mongo](https://github.com/flapdoodle-oss/de.flapdoodle.embed.mongo)提供自动配置。要在你的Spring Boot应用程序中使用它，需要添加对`de.flapdoodle.embed:de.flapdoodle.embed.mongo`的依赖。
+
+Mongo监听的端口可以通过设置`spring.data.mongodb.port`属性进行配置。由`MongoAutoConfiguration`创建的`MongoClient`会自动配置为使用随机分配的端口。
+
+> 如果你不配置自定义端口，嵌入式支持默认使用一个随机端口（而不是27017）。
+
+如果你在classpath上有SLF4J，Mongo产生的输出会自动路由到一个名为`org.springframework.boot.autoconfigure.mongo.embedded.EmbeddedMongo`的日志器。
+
+你可以声明你自己的`IMongodConfig`和`IRuntimeConfig` Bean 来控制Mongo实例的配置和日志路由。下载配置可以通过声明`DownloadConfigBuilderCustomizer` Bean来定制。
+
+### 12.3. Neo4j
+
+[Neo4j](https://neo4j.com/)是一个开源的NoSQL图数据库，它使用由第一类关系连接的节点的丰富数据模型，比传统的RDBMS方法更适合连接大数据。Spring Boot为与Neo4j合作提供了一些便利，包括`spring-boot-starter-data-neo4j` "Starter"。
+
+#### 12.3.1. 连接到 Neo4j Database
+
+为了访问Neo4j服务器，你可以注入一个自动配置的`org.neo4j.driver.Driver`。默认情况下，实例会尝试使用Bolt协议连接到`localhost:7687`的Neo4j服务器。下面的例子显示了如何注入一个Neo4j的`Driver`，让你访问`Session`。
+
+```java
+import org.neo4j.driver.Driver;
+import org.neo4j.driver.Session;
+import org.neo4j.driver.Values;
+
+import org.springframework.stereotype.Component;
+
+@Component
+public class MyBean {
+
+    private final Driver driver;
+
+    public MyBean(Driver driver) {
+        this.driver = driver;
+    }
+
+    public String someMethod(String message) {
+        try (Session session = this.driver.session()) {
+            return session.writeTransaction((transaction) -> transaction
+                    .run("CREATE (a:Greeting) SET a.message = $message RETURN a.message + ', from node ' + id(a)",
+                            Values.parameters("message", message))
+                    .single().get(0).asString());
+        }
+    }
+
+}
+```
+
+你可以使用`spring.neo4j.*`属性来配置驱动程序的各个方面。下面的例子显示了如何配置要使用的URI和凭证。
+
+```yaml
+spring:
+  neo4j:
+    uri: "bolt://my-server:7687"
+    authentication:
+      username: "neo4j"
+      password: "secret"
+```
+
+自动配置的 `Driver` 是用 `ConfigBuilder` 创建的。为了微调它的配置，声明一个或多个`ConfigBuilderCustomizer` Bean。每一个都将与用于创建 `Driver` 的 `ConfigBuilder` 一起被依次调用。
+
+#### 12.3.2. Spring Data Neo4j Repositories
+
+Spring Data包括对Neo4j的repository支持。关于Spring Data Neo4j的完整细节，请参阅[参考文档](https://docs.spring.io/spring-data/neo4j/docs/6.1.3/reference/html/)。
+
+Spring Data Neo4j与Spring Data JPA共享共同的基础架构，就像许多其他Spring Data模块那样。你可以采用前面的JPA例子，将`City` 定义为Spring Data Neo4j的`@Node`，而不是JPA的`@Entity`，资源库的抽象也以同样的方式工作，如下面的例子中所示。
+
+```java
+import java.util.Optional;
+
+import org.springframework.data.neo4j.repository.Neo4jRepository;
+
+public interface CityRepository extends Neo4jRepository<City, Long> {
+
+    Optional<City> findOneByNameAndState(String name, String state);
+
+}
+```
+
+`spring-boot-starter-data-neo4j` "Starter" 实现了repository支持和事务管理。Spring Boot使用`Neo4jTemplate`或`ReactiveNeo4jTemplate` Bean，支持经典和响应式Neo4j仓库。当Project Reactor在classpath上可用时，响应式也是自动配置的。
+
+你可以通过使用`@EnableNeo4jRepositories`和`@EntityScan`分别在`@Configuration`-bean上自定义查找存储库和实体的位置。
+
+在使用响应式的应用程序中，`ReactiveTransactionManager`不是自动配置的。要启用事务管理，必须在你的配置中定义以下Bean。
+
+```java
+import org.neo4j.driver.Driver;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.data.neo4j.core.ReactiveDatabaseSelectionProvider;
+import org.springframework.data.neo4j.core.transaction.ReactiveNeo4jTransactionManager;
+
+@Configuration(proxyBeanMethods = false)
+public class MyNeo4jConfiguration {
+
+    @Bean
+    public ReactiveNeo4jTransactionManager reactiveTransactionManager(Driver driver,
+            ReactiveDatabaseSelectionProvider databaseNameProvider) {
+        return new ReactiveNeo4jTransactionManager(driver, databaseNameProvider);
+    }
+
+}
+```
+
+### 12.4. Solr
+
+[Apache Solr](https://lucene.apache.org/solr/)是一个搜索引擎。Spring Boot为Solr 5客户端库提供了基本的自动配置功能。
+
+#### 12.4.1. 连接到 Solr
+
+你可以像其他Spring Bean一样注入一个自动配置的`SolrClient`实例。默认情况下，该实例会尝试连接到`localhost:8983/solr`的服务器上。下面的例子展示了如何注入一个Solr Bean。
+
+```java
+import java.io.IOException;
+
+import org.apache.solr.client.solrj.SolrClient;
+import org.apache.solr.client.solrj.SolrServerException;
+import org.apache.solr.client.solrj.response.SolrPingResponse;
+
+import org.springframework.stereotype.Component;
+
+@Component
+public class MyBean {
+
+    private final SolrClient solr;
+
+    public MyBean(SolrClient solr) {
+        this.solr = solr;
+    }
+
+    public SolrPingResponse someMethod() throws SolrServerException, IOException {
+        return this.solr.ping("users");
+    }
+
+}
+```
+
+如果你添加了你自己的`@Bean` 类型的`SolrClient`，它将取代默认的。
+
+## 12.5. Elasticsearch
+
+[Elasticsearch](https://www.elastic.co/products/elasticsearch)是一个开源、分布式、RESTful搜索和分析引擎。Spring Boot为Elasticsearch提供了基本的自动配置功能。
+
+Spring Boot支持几个客户端。
+
+* 官方Java "Low Level" 和 "High Level" REST客户端
+* Spring Data Elasticsearch提供的`ReactiveElasticsearchClient`。
+
+Spring Boot提供了一个专门的 "Starter"，`spring-boot-starter-data-elasticsearch`。
+
+### 12.5.1. 使用REST clients连接到Elasticsearch
+
+Elasticsearch提供了[两个不同的REST客户端](https://www.elastic.co/guide/en/elasticsearch/client/java-rest/current/index.html)，你可以用它们来查询集群："低级"客户端和 "高级"客户端。Spring Boot为 "高级" 客户端提供了支持，它与`org.elasticsearch.client:elasticsearch-rest-high-level-client`一起发布。
+
+如果你在classpath上有这个依赖，Spring Boot会自动配置并注册一个`RestHighLevelClient`bean，默认目标是`localhost:9200`。你可以进一步调整`RestHighLevelClient`的配置方式，如以下例子所示。
+
+```yaml
+spring:
+  elasticsearch:
+    rest:
+      uris: "https://search.example.com:9200"
+      read-timeout: "10s"
+      username: "user"
+      password: "secret"
+```
+
+你也可以注册任意数量的实现了`RestClientBuilderCustomizer`的Bean，以便进行更高级的定制。要完全控制注册，请定义一个`RestClientBuilder`bean。
+
+> 如果你的应用程序需要访问一个 "低级"的 `RestClient`，你可以通过调用`client.getLowLevelClient()` 在自动配置的`RestHighLevelClient`上得到它。
+
+此外，如果`elasticsearch-rest-client-sniffer`在classpath上，`Sniffer`会被自动配置为自动从运行中的Elasticsearch集群中发现节点，并将它们设置为`RestHighLevelClient`bean。你可以进一步调整`Sniffer`的配置方式，如以下例子所示。
+
+```yaml
+spring:
+  elasticsearch:
+    rest:
+      sniffer:
+        interval: 10m
+        delay-after-failure: 30s
+```
+
+#### 12.5.2. 使用Reactive REST客户端连接到Elasticsearch
+
+[Spring Data Elasticsearch](https://spring.io/projects/spring-data-elasticsearch)提供了`ReactiveElasticsearchClient`，用于以响应的方式查询Elasticsearch实例。它建立在WebFlux的`WebClient`之上，所以`spring-boot-starter-elasticsearch`和`spring-boot-starter-webflux`这两个依赖项对于启用这种支持很有用。
+
+默认情况下，Spring Boot会自动配置和注册一个`ReactiveElasticsearchClient`bean，目标是`localhost:9200`。你可以进一步调整它的配置方式，如下面的例子所示。
+
+```yaml
+spring:
+  data:
+    elasticsearch:
+      client:
+        reactive:
+          endpoints: "search.example.com:9200"
+          use-ssl: true
+          socket-timeout: "10s"
+          username: "user"
+          password: "secret"
+```
+
+如果配置属性还不够，你想完全控制客户端配置，你可以注册一个自定义的`ClientConfiguration`bean。
+
+#### 12.5.3. 通过使用Spring Data连接到Elasticsearch
+
+要连接到Elasticsearch，必须定义一个`RestHighLevelClient`bean，由Spring Boot自动配置或由应用程序手动提供（见前几节）。有了这个配置，就可以像其他Spring Bean一样注入`ElasticsearchRestTemplate`，如下例所示。
+
+```java
+import org.springframework.data.elasticsearch.core.ElasticsearchRestTemplate;
+import org.springframework.stereotype.Component;
+
+@Component
+public class MyBean {
+
+    private final ElasticsearchRestTemplate template;
+
+    public MyBean(ElasticsearchRestTemplate template) {
+        this.template = template;
+    }
+
+    public boolean someMethod(String id) {
+        return this.template.exists(id, User.class);
+    }
+
+}
+```
+
+在存在`spring-data-elasticsearch`和使用`WebClient`（通常是`spring-boot-starter-webflux`）所需的依赖时，Spring Boot还可以自动配置一个[ReactiveElasticsearchClient](https://docs.spring.io/spring-boot/docs/current/reference/html/features.html#features.nosql.elasticsearch.connecting-using-reactive-rest)和一个`ReactiveElasticsearchTemplate`作为bean。它们相当于其他REST客户端的响应式。
+
+#### 12.5.4. Spring Data Elasticsearch Repositories
+
+Spring Data包括对Elasticsearch的资源库支持。与前面讨论的JPA资源库一样，其基本原理是根据方法名称自动为你构建查询。
+
+事实上，Spring Data JPA和Spring Data Elasticsearch都共享相同的公共基础设施。你可以用前面的JPA例子，假设`City`现在是Elasticsearch的`@Document`类，而不是JPA的`@Entity`，它的工作方式是一样的。
+
+> 关于Spring Data Elasticsearch的完整细节，请参考[参考文档](https://docs.spring.io/spring-data/elasticsearch/docs/current/reference/html/)。
+
+Spring Boot使用`ElasticsearchRestTemplate`或`ReactiveElasticsearchTemplate`豆，支持经典和反应式Elasticsearch存储库。鉴于所需的依赖关系存在，这些豆子很可能是由Spring Boot自动配置的。
+
+如果你想使用自己的模板来支持Elasticsearch repositories，你可以添加自己的`ElasticsearchRestTemplate`或`ElasticsearchOperations` `@Bean`，只要它被命名为`"elasticsearchTemplate"`。同样适用于`ReactiveElasticsearchTemplate`和`ReactiveElasticsearchOperations`，bean的名字为`"reactiveElasticsearchTemplate"`。
+
+你可以通过以下属性选择禁用存储库支持。
+
+```yaml
+spring:
+  data:
+    elasticsearch:
+      repositories:
+        enabled: false
+```
+
+### 12.6. Cassandra
+
+[Cassandra](https://cassandra.apache.org/)是一个开源的分布式数据库管理系统，旨在处理许多商品服务器上的大量数据。Spring Boot为Cassandra和[Spring Data Cassandra](https://github.com/spring-projects/spring-data-cassandra)提供的上面的抽象提供自动配置。有一个`spring-boot-starter-data-cassandra`的 "Starter"，用于以方便的方式收集依赖项。
+
+#### 12.6.1. 连接到 Cassandra
+
+你可以像对待其他Spring Bean一样，注入一个自动配置的`CassandraTemplate`或Cassandra`CqlSession`实例。`spring.data.cassandra.*`属性可用于定制连接。一般来说，你提供`keyspace-name`和`contact-points`以及本地数据中心名称，如下例所示。
+
+```yaml
+spring:
+  data:
+    cassandra:
+      keyspace-name: "mykeyspace"
+      contact-points: "cassandrahost1:9042,cassandrahost2:9042"
+      local-datacenter: "datacenter1"
+```
+
+如果你的所有contact points的端口都是一样的，你可以使用一个快捷方式，只指定主机名，如下例所示。
+
+```yaml
+spring:
+  data:
+    cassandra:
+      keyspace-name: "mykeyspace"
+      contact-points: "cassandrahost1,cassandrahost2"
+      local-datacenter: "datacenter1"
+```
+
+> 这两个例子是相同的，因为端口默认为`9042`。如果你需要配置端口，使用`spring.data.cassandra.port`。
+
+Cassandra驱动有自己的配置基础结构，在classpath的根部加载一个`application.conf`。
+
+Spring Boot默认不寻找这样的文件，但可以使用`spring.data.cassandra.config`加载一个。如果一个属性同时存在于`spring.data.cassandra.*`和配置文件中，则以`spring.data.cassandra.*`中的值为优先。
+
+对于更高级的驱动定制，你可以注册任意数量的Bean来实现`DriverConfigLoaderBuilderCustomizer`。`CqlSession`可以用`CqlSessionBuilderCustomizer`类型的Bean来定制。
+
+如果你使用`CqlSessionBuilder`来创建多个`CqlSession` bean，请记住该构建器是可变的，所以确保为每个会话注入一个新Session。
+
+下面的代码列表显示了如何注入一个Cassandra Bean。
+
+```java
+import org.springframework.data.cassandra.core.CassandraTemplate;
+import org.springframework.stereotype.Component;
+
+@Component
+public class MyBean {
+
+    private final CassandraTemplate template;
+
+    public MyBean(CassandraTemplate template) {
+        this.template = template;
+    }
+
+    public long someMethod() {
+        return this.template.count(User.class);
+    }
+
+}
+```
+
+如果你添加了你自己的`@Bean`类型的`CassandraTemplate`，它将取代默认的。
+
+#### 12.6.2. Spring Data Cassandra Repositories
+
+Spring Data包括对Cassandra的基本repository支持。目前，这比前面讨论的JPA repositories更为有限，需要用`@Query`来注释查找方法。
+
+> 关于Spring Data Cassandra的完整细节，请参考[参考文档](https://docs.spring.io/spring-data/cassandra/docs/)。
+
+### 12.7. Couchbase
+
 TODO
 
 {{#include ../license.md}}
