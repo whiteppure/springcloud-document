@@ -5,7 +5,7 @@
   - [开始使用](spring-boot/getting-started.md)
   - [升级Spring Boot应用](spring-boot/upgrading.md)
   - [使用Spring Boot](spring-boot/using.md)
-  - [Sring Boot特性](spring-boot/features.md)
+  - [Spring Boot特性](spring-boot/features.md)
   - [Spring Boot Actuator](spring-boot/actuator.md)
   - [Spring Boot CLI](spring-boot/cli.md)
   - [部署Spring Boot应用](spring-boot/deployment.md)
