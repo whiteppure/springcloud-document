@@ -557,6 +557,6 @@ Spring Boot应用程序可以通过使用winsw作为Windows服务启动。
 ## 4. 接下来读什么
 
 查看Cloud Foundry、Heroku、OpenShift和Boxfuse网站，了解更多关于PaaS可以提供的功能类型的信息。这些只是最流行的Java PaaS提供程序中的四个。由于Spring Boot非常适合基于云的部署，您也可以自由地考虑其他提供商。
-下一节继续讨论Spring Boot CLI，或者您可以跳过这一节阅读构建工具插件。
+下一节继续讨论`Spring Boot CLI`，或者您可以跳过这一节阅读构建工具插件。
 
 {{#include ../license.md}}
