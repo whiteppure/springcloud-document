@@ -1,6 +1,6 @@
 # Summary
 
-- [Index](README.md)
+- [Spring中文文档](README.md)
 - [Spring Boot](spring-boot/README.md)
   - [开始使用](spring-boot/getting-started.md)
   - [升级Spring Boot应用](spring-boot/upgrading.md)
